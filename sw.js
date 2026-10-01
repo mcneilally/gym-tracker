@@ -1,4 +1,4 @@
-const CACHE = 'gym-tracker-v2';
+const CACHE = 'gym-tracker-v3';
 const ASSETS = ['./', './index.html', './style.css', './app.js', './logic.js', './manifest.json',
   './sample-program.csv', './program-template.csv', './icons/icon-192.png', './icons/icon-512.png', './icons/maskable-512.png', './icons/apple-touch-icon.png'];
 self.addEventListener('install', e => { e.waitUntil(caches.open(CACHE).then(c => c.addAll(ASSETS)).then(() => self.skipWaiting())); });
