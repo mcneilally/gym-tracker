@@ -1,0 +1,19 @@
+{
+  "name": "Gym Tracker",
+  "short_name": "Gym",
+  "description": "Workout tracker with progressive overload coaching. Works offline; data stays on your phone.",
+  "start_url": "./index.html",
+  "scope": "./",
+  "id": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#0e1116",
+  "theme_color": "#0e1116",
+  "lang": "en-GB",
+  "categories": ["health", "fitness"],
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icons/maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
