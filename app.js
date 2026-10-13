@@ -111,7 +111,7 @@
         target: { sets: pl.nSets, repMin: ex.repMin, repMax: ex.repMax, weight: pl.weight, baseSets: ex.sets, baseWeight: ex.weight }, plan: L.planText(ex, pl), sets: pl.sets };
     });
     state.active = { id: L.newId('s'), date: Date.now(), week: state.week, block: ph.block, pweek: ph.week, deload: dl, dayId: day.id, dayIdx: dayIdx, dayName: day.name, exercises: exs };
-    save(); ui.tab = 'workouts'; ui.stack = [{ t: 'workout', d: dayIdx }, { t: 'exercise', d: dayIdx, e: 0 }]; render(); window.scrollTo(0, 0);
+    save(); ui.tab = 'workouts'; ui.stack = [{ t: 'workout', d: dayIdx }, { t: 'exercise', d: dayIdx, e: 0 }]; render(); $('#view').scrollTop = 0;
   }
   var lastFinish = null;
   function finishSession(recovery) {
@@ -600,7 +600,7 @@
   /* ============ main render + events ============ */
   function top() { return ui.stack[ui.stack.length - 1]; }
   function render() {
-    var v = $('#view'), y = window.scrollY, t = top();
+    var v = $('#view'), y = $('#view').scrollTop, t = top();
     afterRender = null;
     [].forEach.call(document.querySelectorAll('#tabs button'), function (b) { b.classList.toggle('on', b.dataset.tab === ui.tab); });
     clampDay();
@@ -628,12 +628,12 @@
     v.innerHTML = html;
     var c = $('#cta'); c.innerHTML = cta; c.hidden = !cta; document.body.classList.toggle('hascta', !!cta);
     if (afterRender) afterRender();
-    window.scrollTo(0, y);
+    $('#view').scrollTop = y;
   }
-  function go(tab) { ui.tab = tab; ui.stack = []; render(); window.scrollTo(0, 0); }
-  function push(e) { ui.stack.push(e); render(); window.scrollTo(0, 0); }
+  function go(tab) { ui.tab = tab; ui.stack = []; render(); $('#view').scrollTop = 0; }
+  function push(e) { ui.stack.push(e); render(); $('#view').scrollTop = 0; }
   $('#tabs').addEventListener('click', function (e) { var b = e.target.closest('[data-tab]'); if (b) go(b.dataset.tab); });
-  $('#back').addEventListener('click', function () { ui.stack.pop(); render(); window.scrollTo(0, 0); });
+  $('#back').addEventListener('click', function () { ui.stack.pop(); render(); $('#view').scrollTop = 0; });
   window.addEventListener('resize', function () { if (ui.tab === 'progress' && !ui.stack.length) drawChart(); });
 
   function setVal(e, j, f, val) {
@@ -673,9 +673,9 @@
       case 'calprev': ui.calOff--; render(); break;
       case 'calnext': ui.calOff++; render(); break;
       case 'ctab': ui.ctab = b.dataset.v; render(); break;
-      case 'openworkout': ui.tab = ui.tab; ui.stack = [{ t: 'workout', d: +b.dataset.day }]; render(); window.scrollTo(0, 0); break;
+      case 'openworkout': ui.tab = ui.tab; ui.stack = [{ t: 'workout', d: +b.dataset.day }]; render(); $('#view').scrollTop = 0; break;
       case 'openex': push({ t: 'exercise', d: +b.dataset.day, e: +b.dataset.ex }); break;
-      case 'nextex': { var tp = top(); ui.stack[ui.stack.length - 1] = { t: 'exercise', d: tp.d, e: tp.e + 1 }; render(); window.scrollTo(0, 0); break; }
+      case 'nextex': { var tp = top(); ui.stack[ui.stack.length - 1] = { t: 'exercise', d: tp.d, e: tp.e + 1 }; render(); $('#view').scrollTop = 0; break; }
       case 'toprogress': ui.progEx = exName(); go('progress'); break;
       case 'start': {
         if (state.active) { ui.stack = [{ t: 'workout', d: state.active.dayIdx }]; render(); toast('Resuming your workout in progress'); break; }
@@ -777,3 +777,6 @@
   document.addEventListener('visibilitychange', function () { if (!document.hidden && rest) tickRest(); });
   window.__gym = { get state() { return state; }, L: L, render: render, normalise: normalise };
 })();
+
+// iOS: undo any window shift left by the keyboard
+document.addEventListener('focusout',function(){setTimeout(function(){if(window.scrollY||window.scrollX)window.scrollTo(0,0);},50);});
