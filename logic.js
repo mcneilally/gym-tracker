@@ -430,8 +430,8 @@
 
   /* Chest-supported machine row (replaced the barbell bent-over row on Day 1). */
   function chestRow() {
-    var e = makeExercise({ exercise: 'Plate-loaded chest-supported row', sets: 3, reps: '8-10', weight: 40, type: 'upper', muscle: 'Back, lats, rear delts', rest: 120,
-      notes: 'T-bar style, chest on pad, no lower-back strain. Weight is plates added – start ~40kg of plates and find your level. Form first. Rest 2 min.' });
+    var e = makeExercise({ exercise: 'Plate-loaded chest-supported row', sets: 3, reps: '8-10', weight: 70, type: 'upper', muscle: 'Back, lats, rear delts', rest: 120,
+      notes: 'T-bar style, chest on pad. Log total plates (35kg each side = 70). Form first. Rest 2 min.' });
     e.video = youtubeSearchUrl('Plate loaded chest supported row'); return e;
   }
   /* One-off: swap 'Barbell bent-over row' on Day 1 for the chest-supported row. New id so history stays separate. */
