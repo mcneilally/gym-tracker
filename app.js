@@ -35,6 +35,8 @@
       s.v = 2;
     }
     L.fixLateralRaise(s.program.days, s.changes);
+    if (!s.migrations || typeof s.migrations !== 'object') s.migrations = {};
+    if (!s.migrations.swapRow1) { L.swapBentOverRow(s.program.days, s.changes); s.migrations.swapRow1 = true; }
     return s;
   }
   function load() { try { return normalise(JSON.parse(localStorage.getItem(KEY))); } catch (e) { return defaults(); } }
@@ -422,9 +424,9 @@
     var h = '<div class="card"><h2>Coach change log</h2><div class="dim small">Every target change from the coach or a new block. Undo puts the target back.</div>';
     if (!list.length) return h + '<div class="dim small" style="margin-top:8px">Nothing yet.</div></div>';
     list.forEach(function (c) {
-      var lbl = c.source === 'auto' ? 'auto' : c.source === 'block' ? 'new block' : c.source === 'migrate' ? 'carried over' : c.source === 'coach' ? 'coach correction' : 'applied';
+      var lbl = c.source === 'auto' ? 'auto' : c.source === 'block' ? 'new block' : c.source === 'migrate' ? 'carried over' : c.kind === 'swapped' ? 'exercise swap' : c.source === 'coach' ? 'coach correction' : 'applied';
       h += '<div class="hist"><div class="row between"><div><b>' + esc(c.exName) + '</b> <span class="dim small">' + fmtDate(c.date) + ' · ' + lbl + '</span><div class="small' + (c.undone ? ' dim' : '') + '">' + (c.undone ? '<s>' : '') + esc(L.describeChange(c) || 'no change') + (c.undone ? '</s> (undone)' : '') + '</div></div>' +
-        (c.undone ? '' : '<button class="sm" data-act="undochange" data-cid="' + c.id + '">Undo</button>') + '</div></div>';
+        (c.undone || c.noUndo ? '' : '<button class="sm" data-act="undochange" data-cid="' + c.id + '">Undo</button>') + '</div></div>';
     });
     return h + '</div>';
   }

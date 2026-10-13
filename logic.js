@@ -310,6 +310,7 @@
   }
   function describeChange(c) {
     var out = [];
+    if (c.kind === 'swapped') return (c.note || 'Swapped exercise') + ' → ' + c.exName + ' (' + c.after.sets + ' × ' + c.after.reps + ' @ ' + fmt(c.after.weight) + 'kg)';
     if (c.before.weight !== c.after.weight) out.push(fmt(c.before.weight) + ' → ' + fmt(c.after.weight) + 'kg');
     if (c.before.sets !== c.after.sets) out.push(c.before.sets + ' → ' + c.after.sets + ' sets');
     if (c.before.reps !== c.after.reps) out.push('reps ' + c.before.reps + ' → ' + c.after.reps);
@@ -427,6 +428,29 @@
     return out;
   }
 
+  /* Chest-supported machine row (replaced the barbell bent-over row on Day 1). */
+  function chestRow() {
+    var e = makeExercise({ exercise: 'Plate-loaded chest-supported row', sets: 3, reps: '8-10', weight: 40, type: 'upper', muscle: 'Back, lats, rear delts', rest: 120,
+      notes: 'T-bar style, chest on pad, no lower-back strain. Weight is plates added – start ~40kg of plates and find your level. Form first. Rest 2 min.' });
+    e.video = youtubeSearchUrl('Plate loaded chest supported row'); return e;
+  }
+  /* One-off: swap 'Barbell bent-over row' on Day 1 for the chest-supported row. New id so history stays separate. */
+  function swapBentOverRow(days, changes) {
+    var d = (days || []).filter(function (x) { return /^day 1\b/i.test(x.name || ''); })[0] || (days || [])[0];
+    if (!d || !d.exercises) return null;
+    for (var i = 0; i < d.exercises.length; i++) {
+      var o = d.exercises[i];
+      if (normName(o.name) !== normName('Barbell bent-over row')) continue;
+      var n = chestRow();
+      if (n.blockStart == null) n.blockStart = n.weight; n.nextReps = null;
+      d.exercises[i] = n;
+      var c = { id: newId('c'), date: Date.now(), exId: n.id, exName: n.name, kind: 'swapped', source: 'coach', note: 'Swapped from ' + o.name,
+        before: { weight: o.weight, reps: o.nextReps != null ? o.nextReps : o.repMin, sets: o.sets }, after: { weight: n.weight, reps: n.repMin, sets: n.sets }, undone: false, noUndo: true };
+      (changes || []).push(c); return c;
+    }
+    return null;
+  }
+
   /* ---------- Built-in programme: Alastair – Block 1 ---------- */
   function builtinAlastairBlock1() {
     function X(o) {
@@ -438,7 +462,7 @@
       { id: newId('d'), name: 'Day 1 – Heavy', weekday: 0, exercises: [
         X({ n: 'Leg press (heavy)', s: 3, r: '6', w: 210, t: 'lower', m: 'Quads, glutes', bo: true, rest: 150, q: 'Leg press', note: 'Top set then back-off sets ~6% lighter. Rest 2–3 min.' }),
         X({ n: 'Barbell bench press', s: 3, r: '6-8', w: 87.5, t: 'upper', m: 'Chest, triceps, front delts', bo: true, rest: 150, note: 'Top set then back-off sets ~6% lighter. Rest 2–3 min.' }),
-        X({ n: 'Barbell bent-over row', s: 3, r: '8', w: 60, t: 'upper', m: 'Back, biceps', rest: 150, note: 'Start conservative – find your weight in week 1. Rest 2–3 min.' }),
+        chestRow(),
         X({ n: 'Leg curl', s: 3, r: '8-10', w: 77.5, t: 'lower', m: 'Hamstrings', rest: 75, q: 'Seated leg curl machine', note: 'Machine. Rest 60–90s.' }),
         X({ n: 'Dumbbell lateral raise', s: 3, r: '10', w: 7, t: 'upper', m: 'Side delts', rest: 60, note: 'Light and controlled. Rest 60–90s.' }),
         X({ n: 'Dumbbell bicep curl', s: 3, r: '8-10', w: 14, t: 'upper', m: 'Biceps', rest: 60, note: 'Weight per dumbbell. Rest 60–90s.' })] },
@@ -471,6 +495,6 @@
     applySuggestion: applySuggestion, isApplied: isApplied, describeChange: describeChange, bestWorkingWeight: bestWorkingWeight, nextBlockWeight: nextBlockWeight,
     builtinAlastairBlock1: builtinAlastairBlock1,
     historyFor: historyFor, suggestFor: suggestFor, metaOf: metaOf, applyForExercise: applyForExercise, applySessionSuggestions: applySessionSuggestions,
-    changeIsCurrent: changeIsCurrent, undoChange: undoChange, rolloverBlock: rolloverBlock, findExercise: findExercise, suggest: suggest, nextWeightFor: nextWeightFor, fixLateralRaise: fixLateralRaise, sessionE1RM: sessionE1RM, trend: trend, csvEscape: csvEscape };
+    changeIsCurrent: changeIsCurrent, undoChange: undoChange, rolloverBlock: rolloverBlock, findExercise: findExercise, suggest: suggest, nextWeightFor: nextWeightFor, fixLateralRaise: fixLateralRaise, swapBentOverRow: swapBentOverRow, chestRow: chestRow, sessionE1RM: sessionE1RM, trend: trend, csvEscape: csvEscape };
   if (typeof module !== 'undefined' && module.exports) module.exports = api; else root.GymLogic = api;
 })(typeof self !== 'undefined' ? self : this);
