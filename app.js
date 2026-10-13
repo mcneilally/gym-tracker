@@ -34,6 +34,7 @@
       }); });
       s.v = 2;
     }
+    L.fixLateralRaise(s.program.days, s.changes);
     return s;
   }
   function load() { try { return normalise(JSON.parse(localStorage.getItem(KEY))); } catch (e) { return defaults(); } }
@@ -361,7 +362,7 @@
     var pl = a ? null : L.plannedSets(e, { deload: isDeloadNow() }), tg = a ? e.target : { sets: pl.nSets, repMin: e.repMin, repMax: e.repMax, weight: pl.weight };
     var meta = a ? { sets: tg.sets, repMin: tg.repMin, repMax: tg.repMax, type: e.type, weight: tg.weight } : { sets: e.sets, repMin: e.repMin, repMax: e.repMax, type: e.type, weight: e.weight };
     var h = videoMedia(name);
-    h += '<div class="card"><div class="ex-name">' + esc(name) + '</div><span class="tag">' + tg.sets + ' × ' + L.repsLabel(tg) + '</span><span class="tag">' + (e.type === 'lower' ? 'lower body · +5kg steps' : 'upper body · +2.5kg steps') + '</span>' + (e.muscle ? '<span class="tag">' + esc(e.muscle) + '</span>' : '') + (e.backoff ? '<span class="tag">top set + back-off</span>' : '') + (e.rest ? '<span class="tag">rest ~' + (e.rest >= 120 ? Math.round(e.rest / 60 * 2) / 2 + ' min' : e.rest + 's') + '</span>' : '') +
+    h += '<div class="card"><div class="ex-name">' + esc(name) + '</div><span class="tag">' + tg.sets + ' × ' + L.repsLabel(tg) + '</span><span class="tag">' + (e.type === 'lower' ? 'lower body · load-scaled steps' : 'upper body · load-scaled steps') + '</span>' + (e.muscle ? '<span class="tag">' + esc(e.muscle) + '</span>' : '') + (e.backoff ? '<span class="tag">top set + back-off</span>' : '') + (e.rest ? '<span class="tag">rest ~' + (e.rest >= 120 ? Math.round(e.rest / 60 * 2) / 2 + ' min' : e.rest + 's') + '</span>' : '') +
       (e.notes ? '<div class="small dim" style="margin-top:8px">📝 ' + esc(e.notes) + '</div>' : '') + '<div class="last">' + lastLine(last) + '</div>';
     var plan = a ? e.plan : L.planText(e, pl);
     h += '<div class="plan">🎯 ' + (a ? 'Today: ' : 'Next: ') + esc(plan) + '</div></div>';
@@ -421,7 +422,7 @@
     var h = '<div class="card"><h2>Coach change log</h2><div class="dim small">Every target change from the coach or a new block. Undo puts the target back.</div>';
     if (!list.length) return h + '<div class="dim small" style="margin-top:8px">Nothing yet.</div></div>';
     list.forEach(function (c) {
-      var lbl = c.source === 'auto' ? 'auto' : c.source === 'block' ? 'new block' : c.source === 'migrate' ? 'carried over' : 'applied';
+      var lbl = c.source === 'auto' ? 'auto' : c.source === 'block' ? 'new block' : c.source === 'migrate' ? 'carried over' : c.source === 'coach' ? 'coach correction' : 'applied';
       h += '<div class="hist"><div class="row between"><div><b>' + esc(c.exName) + '</b> <span class="dim small">' + fmtDate(c.date) + ' · ' + lbl + '</span><div class="small' + (c.undone ? ' dim' : '') + '">' + (c.undone ? '<s>' : '') + esc(L.describeChange(c) || 'no change') + (c.undone ? '</s> (undone)' : '') + '</div></div>' +
         (c.undone ? '' : '<button class="sm" data-act="undochange" data-cid="' + c.id + '">Undo</button>') + '</div></div>';
     });

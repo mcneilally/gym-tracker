@@ -151,6 +151,17 @@
   function topWeight(sets) { return sets.reduce(function (m, s) { return Math.max(m, +s.w || 0); }, 0); }
   function totalReps(sets) { return sets.reduce(function (m, s) { return m + (+s.r || 0); }, 0); }
 
+  /* Load-scaled weight step. Light isolation/dumbbell loads get small jumps; never more than ~15% at once. */
+  var DB_RE = /dumbbell|\bdb\b/i;
+  function nextWeightFor(w, ex) {
+    w = +w || 0; var db = DB_RE.test((ex && ex.name) || ''), lower = ex && ex.type === 'lower', step;
+    if (w < 15) step = 1; else if (w <= 40) step = db ? 2 : 2.5; else step = lower ? 5 : 2.5;
+    var cap = w * 0.15;
+    if (step > cap) step = Math.max(db ? 1 : 0.5, Math.floor(cap * 2) / 2);
+    var nw = w + step;
+    if (db) nw = Math.max(Math.floor(w) + 1, Math.round(nw)); // dumbbells come in whole kg
+    return Math.round(nw * 100) / 100;
+  }
   function suggest(history, ex) {
     var inc = ex.type === 'lower' ? 5 : 2.5;
     var incLabel = fmt(inc) + 'kg';
@@ -186,10 +197,10 @@
           text: 'Bodyweight target hit. Add ' + incLabel + ' (belt/vest/dumbbell) or push for ' + (ex.repMax + 1) + ' reps.',
           reason: 'Every set reached the top of the ' + repsLabel(ex) + ' range.' });
       }
-      var nw = tw + inc;
+      var nw = nextWeightFor(tw, ex); inc = Math.round((nw - tw) * 100) / 100; incLabel = fmt(inc) + 'kg';
       return Object.assign(base, { kind: 'add-weight', nextWeight: nw, nextReps: ex.repMin,
         text: 'Add ' + incLabel + ': go to ' + fmt(nw) + 'kg and aim for ' + ex.repMin + '+ reps.',
-        reason: 'Every set hit the top of the ' + repsLabel(ex) + ' range (' + ex.repMax + ' reps) at ' + fmt(tw) + 'kg. That is the signal to add weight (' + incLabel + ' for ' + (ex.type === 'lower' ? 'lower' : 'upper') + '-body lifts).' });
+        reason: 'Every set hit the top of the ' + repsLabel(ex) + ' range (' + ex.repMax + ' reps) at ' + fmt(tw) + 'kg. That is the signal to add a small step (' + incLabel + ', scaled to the load) on top of what you actually lifted.' });
     }
     // in range: check for stall
     if (history.length >= 3) {
@@ -345,6 +356,20 @@
   }
   function metaOf(ex) { return { sets: ex.sets || 3, repMin: ex.repMin || 8, repMax: ex.repMax || 12, type: ex.type || guessType(ex.name), weight: ex.weight || 0 }; }
   function suggestFor(ex, sessions, block) { return suggest(historyFor(sessions, ex.name, true, block), metaOf(ex)); }
+  /* One-off correction for the old +2.5-on-lifted-weight bug (7kg target, 8kg lifted -> 10.5kg). */
+  function fixLateralRaise(days, changes) {
+    var out = null;
+    (days || []).forEach(function (d) { (d.exercises || []).forEach(function (e) {
+      if (out || normName(e.name) !== normName('Dumbbell lateral raise') || +e.weight !== 10.5) return;
+      var last = null; (changes || []).forEach(function (c) { if (c.exId === e.id || normName(c.exName) === normName(e.name)) last = c; });
+      if (!last || last.undone || last.kind !== 'add-weight' || !last.before || !last.after || +last.before.weight !== 7 || +last.after.weight !== 10.5) return;
+      var before = { weight: e.weight, reps: e.nextReps != null ? e.nextReps : e.repMin, sets: e.sets };
+      e.weight = 9;
+      out = { id: newId('c'), date: Date.now(), exId: e.id, exName: e.name, kind: 'corrected', source: 'coach', before: before, after: { weight: 9, reps: before.reps, sets: e.sets }, undone: false };
+      (changes || []).push(out);
+    }); });
+    return out;
+  }
   function changeEntry(ex, c, source) {
     return { id: newId('c'), date: Date.now(), exId: ex.id, exName: ex.name, kind: c.kind, source: source, before: c.before, after: c.after, prevSid: c.prevSid, undone: false };
   }
@@ -446,6 +471,6 @@
     applySuggestion: applySuggestion, isApplied: isApplied, describeChange: describeChange, bestWorkingWeight: bestWorkingWeight, nextBlockWeight: nextBlockWeight,
     builtinAlastairBlock1: builtinAlastairBlock1,
     historyFor: historyFor, suggestFor: suggestFor, metaOf: metaOf, applyForExercise: applyForExercise, applySessionSuggestions: applySessionSuggestions,
-    changeIsCurrent: changeIsCurrent, undoChange: undoChange, rolloverBlock: rolloverBlock, findExercise: findExercise, suggest: suggest, sessionE1RM: sessionE1RM, trend: trend, csvEscape: csvEscape };
+    changeIsCurrent: changeIsCurrent, undoChange: undoChange, rolloverBlock: rolloverBlock, findExercise: findExercise, suggest: suggest, nextWeightFor: nextWeightFor, fixLateralRaise: fixLateralRaise, sessionE1RM: sessionE1RM, trend: trend, csvEscape: csvEscape };
   if (typeof module !== 'undefined' && module.exports) module.exports = api; else root.GymLogic = api;
 })(typeof self !== 'undefined' ? self : this);
