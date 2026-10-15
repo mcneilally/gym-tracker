@@ -37,6 +37,7 @@
     L.fixLateralRaise(s.program.days, s.changes);
     if (!s.migrations || typeof s.migrations !== 'object') s.migrations = {};
     if (!s.migrations.swapRow1) { L.swapBentOverRow(s.program.days, s.changes); s.migrations.swapRow1 = true; }
+    if (!s.migrations.evenDB1) { L.evenDumbbells(s.program.days, s.changes); s.migrations.evenDB1 = true; }
     return s;
   }
   function load() { try { return normalise(JSON.parse(localStorage.getItem(KEY))); } catch (e) { return defaults(); } }

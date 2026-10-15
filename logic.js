@@ -153,7 +153,15 @@
 
   /* Load-scaled weight step. Light isolation/dumbbell loads get small jumps; never more than ~15% at once. */
   var DB_RE = /dumbbell|\bdb\b/i;
+  var DB_EVEN_RE = /dumbbell|\bdb\b|lateral raise|rear delt fly|bicep curl/i;
+  /* The user's gym only has even-kg dumbbells */
+  function isDumbbell(ex) { var n = (ex && ex.name) || ''; if (/cable|machine|band/i.test(n) && !DB_RE.test(n)) return false;
+    return !!ex && (DB_EVEN_RE.test(n) || /per dumbbell/i.test(ex.notes || '')); }
+  function evenDown(w) { w = +w || 0; return Math.max(0, Math.floor(w / 2 + 1e-9) * 2); }
+  function nextEven(w) { return evenDown(w) + 2; }
+  function deloadEven(w) { w = +w || 0; if (!(w > 0)) return 0; var d = evenDown(w * 0.9); if (d >= w) d = Math.max(0, evenDown(w) - 2); return d; }
   function nextWeightFor(w, ex) {
+    if (isDumbbell(ex)) return nextEven(w);
     w = +w || 0; var db = DB_RE.test((ex && ex.name) || ''), lower = ex && ex.type === 'lower', step;
     if (w < 15) step = 1; else if (w <= 40) step = db ? 2 : 2.5; else step = lower ? 5 : 2.5;
     var cap = w * 0.15;
@@ -182,7 +190,7 @@
       var streak = 0;
       for (var i = history.length - 1; i >= 0 && missed(history[i]); i--) streak++;
       if (streak >= 2) {
-        var dw = Math.max(0, roundPlate(tw * 0.9, 2.5));
+        var dw = isDumbbell(ex) ? deloadEven(tw) : Math.max(0, roundPlate(tw * 0.9, 2.5));
         return Object.assign(base, { kind: 'deload', nextWeight: dw, nextReps: ex.repMin,
           text: 'Drop to ' + fmt(dw) + 'kg (a 10% deload) and rebuild.',
           reason: 'You fell short of ' + ex.repMin + ' reps in ' + streak + ' sessions in a row at ' + fmt(tw) + 'kg. A short deload clears fatigue so you can climb back past it.' });
@@ -267,7 +275,8 @@
   /* Deload: ~10% lighter (rounded to 2.5kg; 1kg for tiny loads so it never rounds UP), one fewer set (min 2) */
   function deloadTarget(ex) {
     var w = +ex.weight || 0, sets = Math.max(1, parseInt(ex.sets, 10) || 3), dw = 0;
-    if (w > 0) { dw = roundPlate(w * 0.9, 2.5); if (dw >= w) dw = Math.floor(w * 0.9); dw = Math.max(0, dw); }
+    if (w > 0 && isDumbbell(ex)) dw = deloadEven(w);
+    else if (w > 0) { dw = roundPlate(w * 0.9, 2.5); if (dw >= w) dw = Math.floor(w * 0.9); dw = Math.max(0, dw); }
     return { weight: dw, sets: Math.max(Math.min(sets, 2), sets - 1) };
   }
   /* Back-off weight for sets 2+ of a top-set structure: pct% lighter, rounded to 2.5kg, always below the top set */
@@ -451,6 +460,19 @@
     return null;
   }
 
+  /* One-time migration: round dumbbell targets down to even kg */
+  function evenDumbbells(days, changes) {
+    var out = [];
+    (days || []).forEach(function (d) { (d.exercises || []).forEach(function (ex) {
+      var w = +ex.weight || 0; if (!isDumbbell(ex) || !(w > 0)) return;
+      var nw = evenDown(w); if (nw === w) return;
+      var before = targetOf(ex); ex.weight = nw;
+      var c = { id: newId('c'), date: Date.now(), exId: ex.id, exName: ex.name, kind: 'corrected', source: 'coach', note: 'Rounded to even-kg dumbbells', before: before, after: targetOf(ex), undone: false };
+      (changes || []).push(c); out.push(c);
+    }); });
+    return out;
+  }
+
   /* ---------- Built-in programme: Alastair – Block 1 ---------- */
   function builtinAlastairBlock1() {
     function X(o) {
@@ -495,6 +517,6 @@
     applySuggestion: applySuggestion, isApplied: isApplied, describeChange: describeChange, bestWorkingWeight: bestWorkingWeight, nextBlockWeight: nextBlockWeight,
     builtinAlastairBlock1: builtinAlastairBlock1,
     historyFor: historyFor, suggestFor: suggestFor, metaOf: metaOf, applyForExercise: applyForExercise, applySessionSuggestions: applySessionSuggestions,
-    changeIsCurrent: changeIsCurrent, undoChange: undoChange, rolloverBlock: rolloverBlock, findExercise: findExercise, suggest: suggest, nextWeightFor: nextWeightFor, fixLateralRaise: fixLateralRaise, swapBentOverRow: swapBentOverRow, chestRow: chestRow, sessionE1RM: sessionE1RM, trend: trend, csvEscape: csvEscape };
+    changeIsCurrent: changeIsCurrent, undoChange: undoChange, rolloverBlock: rolloverBlock, findExercise: findExercise, suggest: suggest, nextWeightFor: nextWeightFor, fixLateralRaise: fixLateralRaise, swapBentOverRow: swapBentOverRow, evenDumbbells: evenDumbbells, isDumbbell: isDumbbell, chestRow: chestRow, sessionE1RM: sessionE1RM, trend: trend, csvEscape: csvEscape };
   if (typeof module !== 'undefined' && module.exports) module.exports = api; else root.GymLogic = api;
 })(typeof self !== 'undefined' ? self : this);
