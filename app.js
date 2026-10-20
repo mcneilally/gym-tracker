@@ -38,6 +38,8 @@
     if (!s.migrations || typeof s.migrations !== 'object') s.migrations = {};
     if (!s.migrations.swapRow1) { L.swapBentOverRow(s.program.days, s.changes); s.migrations.swapRow1 = true; }
     if (!s.migrations.evenDB1) { L.evenDumbbells(s.program.days, s.changes); s.migrations.evenDB1 = true; }
+    if (!s.migrations.evenDB2) { L.evenDumbbells(s.program.days, s.changes); s.migrations.evenDB2 = true; }
+    if (!s.migrations.altFly1) { L.addFlyAlt(s.program.days); s.migrations.altFly1 = true; }
     return s;
   }
   function load() { try { return normalise(JSON.parse(localStorage.getItem(KEY))); } catch (e) { return defaults(); } }
@@ -109,13 +111,13 @@
   function startSession(dayIdx) {
     var day = days()[dayIdx]; if (!day || !day.exercises.length) { toast('That day has no exercises yet.'); return; }
     var dl = isDeloadNow(), ph = phase();
-    var exs = day.exercises.map(function (ex) {
-      var pl = L.plannedSets(ex, { deload: dl });
-      return { id: ex.id, name: ex.name, type: ex.type || L.guessType(ex.name), notes: ex.notes || '', muscle: ex.muscle || '', rest: ex.rest || 0, backoff: !!ex.backoff,
-        target: { sets: pl.nSets, repMin: ex.repMin, repMax: ex.repMax, weight: pl.weight, baseSets: ex.sets, baseWeight: ex.weight }, plan: L.planText(ex, pl), sets: pl.sets };
-    });
+    var exs = day.exercises.map(function (ex) { return activeExFrom(ex, L.plannedSets(ex, { deload: dl })); });
     state.active = { id: L.newId('s'), date: Date.now(), week: state.week, block: ph.block, pweek: ph.week, deload: dl, dayId: day.id, dayIdx: dayIdx, dayName: day.name, exercises: exs };
     save(); ui.tab = 'workouts'; ui.stack = [{ t: 'workout', d: dayIdx }, { t: 'exercise', d: dayIdx, e: 0 }]; render(); $('#view').scrollTop = 0;
+  }
+  function activeExFrom(ex, pl) {
+      return { id: ex.id, name: ex.name, type: ex.type || L.guessType(ex.name), notes: ex.notes || '', muscle: ex.muscle || '', rest: ex.rest || 0, backoff: !!ex.backoff,
+        target: { sets: pl.nSets, repMin: ex.repMin, repMax: ex.repMax, weight: pl.weight, baseSets: ex.sets, baseWeight: ex.weight }, plan: L.planText(ex, pl), sets: pl.sets };
   }
   var lastFinish = null;
   function finishSession(recovery) {
@@ -368,7 +370,12 @@
     h += '<div class="card"><div class="ex-name">' + esc(name) + '</div><span class="tag">' + tg.sets + ' × ' + L.repsLabel(tg) + '</span><span class="tag">' + (e.type === 'lower' ? 'lower body · load-scaled steps' : 'upper body · load-scaled steps') + '</span>' + (e.muscle ? '<span class="tag">' + esc(e.muscle) + '</span>' : '') + (e.backoff ? '<span class="tag">top set + back-off</span>' : '') + (e.rest ? '<span class="tag">rest ~' + (e.rest >= 120 ? Math.round(e.rest / 60 * 2) / 2 + ' min' : e.rest + 's') + '</span>' : '') +
       (e.notes ? '<div class="small dim" style="margin-top:8px">📝 ' + esc(e.notes) + '</div>' : '') + '<div class="last">' + lastLine(last) + '</div>';
     var plan = a ? e.plan : L.planText(e, pl);
-    h += '<div class="plan">🎯 ' + (a ? 'Today: ' : 'Next: ') + esc(plan) + '</div></div>';
+    h += '<div class="plan">🎯 ' + (a ? 'Today: ' : 'Next: ') + esc(plan) + '</div>';
+    if (pe && pe.alt) {
+      var started = a && e.sets && e.sets.some(function (x) { return x.done; });
+      h += '<div class="row between" style="margin-top:8px"><span class="small dim">Busy? Alternative: <b>' + esc(pe.alt.name) + '</b></span>' + (started ? '' : '<button class="sm" data-act="swapalt">⇄ Swap</button>') + '</div>';
+    }
+    h += '</div>';
     if (a) {
       var doneSets = e.sets.filter(function (s) { return s.done; });
       h += '<div class="card nopad"><div class="lt head"><span>Set</span><span>Previous</span><span>kg</span><span>Reps</span><span>✓</span></div>';
@@ -670,6 +677,12 @@
       case 'addset': { var ee = curEx(), ls = ee.sets[ee.sets.length - 1]; ee.sets.push({ w: ls ? ls.w : 0, r: ls ? ls.r : 8, done: false }); save(); render(); break; }
       case 'rmset': { var e2 = curEx(); if (e2.sets.length > 1) { e2.sets.pop(); save(); render(); } break; }
       case 'embed': { var k = L.normName(exName()); ui.openVideo[k] = !ui.openVideo[k]; render(); break; }
+      case 'swapalt': {
+        var tp = top(), pe2 = days()[tp.d].exercises[tp.e]; if (!L.swapAlt(pe2)) break;
+        if (state.active && state.active.dayIdx === tp.d) { var ae = state.active.exercises[tp.e], np = L.plannedSets(pe2, { deload: isDeloadNow() });
+          if (ae && !ae.sets.some(function (x) { return x.done; })) { var fresh = activeExFrom(pe2, np); if (fresh) state.active.exercises[tp.e] = fresh; } }
+        save(); toast('Swapped to ' + pe2.name); render(); break;
+      }
       case 'editvideo': editVideoModal(exName()); break;
       case 'restnow': startRest(state.settings.restSecs); break;
       case 'seldate': ui.selDate = +b.dataset.t; render(); break;

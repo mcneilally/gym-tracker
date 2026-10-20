@@ -155,8 +155,11 @@
   var DB_RE = /dumbbell|\bdb\b/i;
   var DB_EVEN_RE = /dumbbell|\bdb\b|lateral raise|rear delt fly|bicep curl/i;
   /* The user's gym only has even-kg dumbbells */
-  function isDumbbell(ex) { var n = (ex && ex.name) || ''; if (/cable|machine|band/i.test(n) && !DB_RE.test(n)) return false;
-    return !!ex && (DB_EVEN_RE.test(n) || /per dumbbell/i.test(ex.notes || '')); }
+  function isDumbbell(ex) { if (!ex) return false; var n = String(ex.name || '');
+    if (/dumbbell|\bdb\b/i.test(n) || /per\s+dumbbell/i.test(String(ex.notes || ''))) return true;
+    if (/cable|machine|band/i.test(n)) return false;
+    return DB_EVEN_RE.test(n); }
+  function deloadPlain(w) { w = +w || 0; if (!(w > 0)) return 0; var d = roundPlate(w * 0.9, 2.5); if (d >= w) d = Math.floor(w * 0.9 * 2) / 2; if (d >= w) d = Math.max(0, w - 0.5); return Math.max(0, d); }
   function evenDown(w) { w = +w || 0; return Math.max(0, Math.floor(w / 2 + 1e-9) * 2); }
   function nextEven(w) { return evenDown(w) + 2; }
   function deloadEven(w) { w = +w || 0; if (!(w > 0)) return 0; var d = evenDown(w * 0.9); if (d >= w) d = Math.max(0, evenDown(w) - 2); return d; }
@@ -190,7 +193,7 @@
       var streak = 0;
       for (var i = history.length - 1; i >= 0 && missed(history[i]); i--) streak++;
       if (streak >= 2) {
-        var dw = isDumbbell(ex) ? deloadEven(tw) : Math.max(0, roundPlate(tw * 0.9, 2.5));
+        var dw = isDumbbell(ex) ? deloadEven(tw) : deloadPlain(tw);
         return Object.assign(base, { kind: 'deload', nextWeight: dw, nextReps: ex.repMin,
           text: 'Drop to ' + fmt(dw) + 'kg (a 10% deload) and rebuild.',
           reason: 'You fell short of ' + ex.repMin + ' reps in ' + streak + ' sessions in a row at ' + fmt(tw) + 'kg. A short deload clears fatigue so you can climb back past it.' });
@@ -276,7 +279,7 @@
   function deloadTarget(ex) {
     var w = +ex.weight || 0, sets = Math.max(1, parseInt(ex.sets, 10) || 3), dw = 0;
     if (w > 0 && isDumbbell(ex)) dw = deloadEven(w);
-    else if (w > 0) { dw = roundPlate(w * 0.9, 2.5); if (dw >= w) dw = Math.floor(w * 0.9); dw = Math.max(0, dw); }
+    else if (w > 0) dw = deloadPlain(w);
     return { weight: dw, sets: Math.max(Math.min(sets, 2), sets - 1) };
   }
   /* Back-off weight for sets 2+ of a top-set structure: pct% lighter, rounded to 2.5kg, always below the top set */
@@ -364,7 +367,7 @@
     });
     return out;
   }
-  function metaOf(ex) { return { sets: ex.sets || 3, repMin: ex.repMin || 8, repMax: ex.repMax || 12, type: ex.type || guessType(ex.name), weight: ex.weight || 0 }; }
+  function metaOf(ex) { return { sets: ex.sets || 3, repMin: ex.repMin || 8, repMax: ex.repMax || 12, type: ex.type || guessType(ex.name), weight: ex.weight || 0, name: ex.name || '', notes: ex.notes || '' }; }
   function suggestFor(ex, sessions, block) { return suggest(historyFor(sessions, ex.name, true, block), metaOf(ex)); }
   /* One-off correction for the old +2.5-on-lifted-weight bug (7kg target, 8kg lifted -> 10.5kg). */
   function fixLateralRaise(days, changes) {
@@ -397,8 +400,8 @@
   }
   function findExercise(days, id, name) {
     var hit = null, n = normName(name);
-    (days || []).forEach(function (d) { (d.exercises || []).forEach(function (e) { if (!hit && e.id === id) hit = e; }); });
-    if (!hit && name) (days || []).forEach(function (d) { (d.exercises || []).forEach(function (e) { if (!hit && normName(e.name) === n) hit = e; }); });
+    (days || []).forEach(function (d) { (d.exercises || []).forEach(function (e) { if (!hit && e.id === id) hit = e; if (!hit && e.alt && e.alt.id === id) hit = e.alt; }); });
+    if (!hit && name) (days || []).forEach(function (d) { (d.exercises || []).forEach(function (e) { if (!hit && normName(e.name) === n) hit = e; if (!hit && e.alt && normName(e.alt.name) === n) hit = e.alt; }); });
     return hit;
   }
   /* After a finished session: apply the coach suggestion to each exercise trained (never in a deload week). */
@@ -473,11 +476,36 @@
     return out;
   }
 
+  /* Alternatives: an exercise may carry one `alt` exercise (own id, name, target -> own history). Swapping exchanges them in place. */
+  function swapAlt(ex) {
+    if (!ex || !ex.alt) return false;
+    var cur = {}; Object.keys(ex).forEach(function (k) { if (k !== 'alt') cur[k] = ex[k]; });
+    var nx = ex.alt; Object.keys(ex).forEach(function (k) { delete ex[k]; });
+    Object.keys(nx).forEach(function (k) { if (k !== 'alt') ex[k] = nx[k]; });
+    ex.alt = cur; return true;
+  }
+  function makeFlyAlt() {
+    var e = makeExercise({ exercise: 'Low-incline dumbbell fly', sets: 2, reps: '12', weight: 10, type: 'upper', muscle: 'Upper chest', rest: 60,
+      notes: 'Bench ~30°. Weight per dumbbell. Slight bend in the elbows, stretch wide, squeeze up. Use when the cables are busy.' });
+    e.video = youtubeSearchUrl('incline dumbbell fly form tutorial'); return e;
+  }
+  /* One-time migration: give Cable fly (low-to-high) its dumbbell alternative */
+  function addFlyAlt(days) {
+    var n = 0;
+    (days || []).forEach(function (d) { (d.exercises || []).forEach(function (ex) {
+      var names = [ex.name, ex.alt && ex.alt.name].map(normName);
+      if (names.indexOf(normName('Cable fly (low-to-high)')) < 0 || names.indexOf(normName('Low-incline dumbbell fly')) >= 0) return;
+      ex.alt = makeFlyAlt(); n++;
+    }); });
+    return n;
+  }
+
   /* ---------- Built-in programme: Alastair – Block 1 ---------- */
   function builtinAlastairBlock1() {
     function X(o) {
       var e = makeExercise({ exercise: o.n, sets: o.s, reps: o.r, weight: o.w, type: o.t, notes: o.note, muscle: o.m, backoff: o.bo, rest: o.rest });
       e.video = youtubeSearchUrl(o.q || o.n);
+      if (o.alt) e.alt = makeFlyAlt();
       return e;
     }
     var days = [
@@ -504,7 +532,7 @@
         X({ n: 'Single-leg machine leg curl', s: 3, r: '10-12', w: 72.5, t: 'lower', m: 'Hamstrings', rest: 75, q: 'Single leg curl machine', note: 'One leg at a time, machine only. Reps are per leg; weight is the stack load for one leg, so adjust it in week 1. Rest 60–90s.' }),
         X({ n: 'Cable lateral raise', s: 3, r: '12', w: 7, t: 'upper', m: 'Side delts', rest: 60, note: 'Dumbbells work too. Rest 60–90s.' }),
         X({ n: 'Tricep dips', s: 3, r: '10', w: 0, t: 'upper', m: 'Triceps, chest', rest: 90, q: 'Tricep dips', note: 'Bodyweight. Rest 60–90s.' }),
-        X({ n: 'Cable fly (low-to-high)', s: 2, r: '12', w: 12, t: 'upper', m: 'Upper chest', rest: 60, q: 'Low to high cable fly', note: 'Upper-chest angle. Rest 60–90s.' })] }
+        X({ n: 'Cable fly (low-to-high)', s: 2, r: '12', w: 12, t: 'upper', m: 'Upper chest', rest: 60, q: 'Low to high cable fly', note: 'Upper-chest angle. Rest 60–90s.', alt: true })] }
     ];
     return { name: 'Alastair – Block 1', days: days };
   }
@@ -517,6 +545,6 @@
     applySuggestion: applySuggestion, isApplied: isApplied, describeChange: describeChange, bestWorkingWeight: bestWorkingWeight, nextBlockWeight: nextBlockWeight,
     builtinAlastairBlock1: builtinAlastairBlock1,
     historyFor: historyFor, suggestFor: suggestFor, metaOf: metaOf, applyForExercise: applyForExercise, applySessionSuggestions: applySessionSuggestions,
-    changeIsCurrent: changeIsCurrent, undoChange: undoChange, rolloverBlock: rolloverBlock, findExercise: findExercise, suggest: suggest, nextWeightFor: nextWeightFor, fixLateralRaise: fixLateralRaise, swapBentOverRow: swapBentOverRow, evenDumbbells: evenDumbbells, isDumbbell: isDumbbell, chestRow: chestRow, sessionE1RM: sessionE1RM, trend: trend, csvEscape: csvEscape };
+    changeIsCurrent: changeIsCurrent, undoChange: undoChange, rolloverBlock: rolloverBlock, findExercise: findExercise, suggest: suggest, nextWeightFor: nextWeightFor, fixLateralRaise: fixLateralRaise, swapBentOverRow: swapBentOverRow, evenDumbbells: evenDumbbells, swapAlt: swapAlt, addFlyAlt: addFlyAlt, isDumbbell: isDumbbell, chestRow: chestRow, sessionE1RM: sessionE1RM, trend: trend, csvEscape: csvEscape };
   if (typeof module !== 'undefined' && module.exports) module.exports = api; else root.GymLogic = api;
 })(typeof self !== 'undefined' ? self : this);
