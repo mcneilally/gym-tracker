@@ -7,7 +7,7 @@
   /* ============ state ============ */
   function defaults() {
     return { v: 2, program: { name: 'My programme', days: [] }, week: 1, nextDayIdx: 0, sessions: [], active: null, changes: [], phaseSince: 0,
-      videos: {}, settings: { name: 'Alastair', restOn: true, restSecs: 90, sound: true, step: 2.5, autoApply: true, autoPhase: true }, lastBackup: 0, seeded: false, created: Date.now() };
+      videos: {}, settings: { name: 'Alastair', restOn: true, restSecs: 90, sound: true, step: 2.5, autoApply: true, autoPhase: true, legsPaused: true }, lastBackup: 0, seeded: false, created: Date.now() };
   }
   function normalise(s) {
     var d = defaults();
@@ -40,6 +40,7 @@
     if (!s.migrations.evenDB1) { L.evenDumbbells(s.program.days, s.changes); s.migrations.evenDB1 = true; }
     if (!s.migrations.evenDB2) { L.evenDumbbells(s.program.days, s.changes); s.migrations.evenDB2 = true; }
     if (!s.migrations.altFly1) { L.addFlyAlt(s.program.days); s.migrations.altFly1 = true; }
+    if (!s.migrations.pushPull1) { if (!s.active) { if (s.program.name === 'Alastair – Block 1' && s.program.days.length) L.migratePushPull(s); s.migrations.pushPull1 = true; } }
     return s;
   }
   function load() { try { return normalise(JSON.parse(localStorage.getItem(KEY))); } catch (e) { return defaults(); } }
@@ -111,7 +112,7 @@
   function startSession(dayIdx) {
     var day = days()[dayIdx]; if (!day || !day.exercises.length) { toast('That day has no exercises yet.'); return; }
     var dl = isDeloadNow(), ph = phase();
-    var exs = day.exercises.map(function (ex) { return activeExFrom(ex, L.plannedSets(ex, { deload: dl })); });
+    var exs = L.visibleExercises(day, state.settings.legsPaused).map(function (ex) { return activeExFrom(ex, L.plannedSets(ex, { deload: dl })); });
     state.active = { id: L.newId('s'), date: Date.now(), week: state.week, block: ph.block, pweek: ph.week, deload: dl, dayId: day.id, dayIdx: dayIdx, dayName: day.name, exercises: exs };
     save(); ui.tab = 'workouts'; ui.stack = [{ t: 'workout', d: dayIdx }, { t: 'exercise', d: dayIdx, e: 0 }]; render(); $('#view').scrollTop = 0;
   }
@@ -209,7 +210,7 @@
   function sameDay(a, b) { return sod(a) === sod(b); }
   function dayFor(t) { return days().filter(function (d) { return d.weekday === wdIdx(t); }); }
   function doneOn(t) { return state.sessions.filter(function (s) { return sameDay(s.date, t); }); }
-  function dayMinutes(d) { return Math.max(10, Math.round(d.exercises.reduce(function (m, e) { return m + e.sets * 2.5 + 2; }, 0) / 5) * 5); }
+  function dayMinutes(d) { return Math.max(10, Math.round(L.visibleExercises(d, state.settings.legsPaused).reduce(function (m, e) { return m + e.sets * 2.5 + 2; }, 0) / 5) * 5); }
   var EMO = [[/squat|leg press|lunge|leg|calf|step/i, '🦵', '#23405f'], [/deadlift|rdl|romanian|hip|glute|good morning/i, '🍑', '#4a3a1f'], [/bench|press|chest|fly|dip|push/i, '💪', '#4a2330'], [/row|pull|lat|chin|shrug/i, '🏋️', '#1f4a3a'], [/curl|bicep/i, '💪', '#3a2a5a'], [/tricep|pushdown|extension/i, '💪', '#5a3a1f'], [/plank|core|crunch|ab/i, '🧘', '#2a4a4a'], [/shoulder|lateral|raise|overhead|ohp/i, '🙆', '#2a3a5a']];
   function thumbHTML(name, big) {
     var e = EMO.filter(function (x) { return x[0].test(name); })[0] || [0, '🏋️', '#27303f'];
@@ -267,7 +268,7 @@
   /* ============ HOME ============ */
   function workoutHero(d, di, dateT, completed) {
     var act = state.active && state.active.dayIdx === di;
-    var h = '<div class="hero"><div class="row between"><span class="pill">' + (isDeloadNow() ? 'Deload' : 'Week ' + phase().week) + '</span><span class="dim small">' + d.exercises.length + ' exercises · ~' + dayMinutes(d) + ' min</span></div><h2>' + esc(d.name) + '</h2>';
+    var h = '<div class="hero"><div class="row between"><span class="pill">' + (isDeloadNow() ? 'Deload' : 'Week ' + phase().week) + '</span><span class="dim small">' + L.visibleExercises(d, state.settings.legsPaused).length + ' exercises · ~' + dayMinutes(d) + ' min</span></div><h2>' + esc(d.name) + '</h2>';
     h += '<div class="dim small">' + d.exercises.slice(0, 3).map(function (e) { return esc(e.name); }).join(' · ') + (d.exercises.length > 3 ? ' …' : '') + '</div>' + thumbsRow(d, 5);
     if (completed) h += '<div class="row"><span class="ok" style="font-weight:700">✓ Completed</span><button class="sm grow" data-act="openworkout" data-day="' + di + '">Details</button></div>';
     else h += '<button class="primary big full" data-act="start" data-day="' + di + '">' + (act ? 'Resume workout' : 'Start workout') + '</button><button class="ghost full sm" data-act="openworkout" data-day="' + di + '" style="margin-top:4px">View exercises</button>';
@@ -321,7 +322,7 @@
     h += '<div class="card"><b>' + fmtDateLong(sel) + '</b>';
     var sc2 = dayFor(sel), dn2 = doneOn(sel);
     if (!sc2.length && !dn2.length) h += '<div class="dim small">Nothing scheduled.</div>';
-    sc2.forEach(function (d) { var di = days().indexOf(d); h += '<div class="row between" style="margin-top:8px"><div><b>' + esc(d.name) + '</b><div class="dim small">' + d.exercises.length + ' exercises</div></div><button class="sm" data-act="openworkout" data-day="' + di + '">Open</button></div>'; });
+    sc2.forEach(function (d) { var di = days().indexOf(d); h += '<div class="row between" style="margin-top:8px"><div><b>' + esc(d.name) + '</b><div class="dim small">' + L.visibleExercises(d, state.settings.legsPaused).length + ' exercises</div></div><button class="sm" data-act="openworkout" data-day="' + di + '">Open</button></div>'; });
     dn2.forEach(function (s) { h += '<div class="hist"><span class="ok">✓</span> ' + esc(s.dayName) + ' <span class="dim small">(' + s.exercises.length + ' exercises)</span></div>'; });
     return h + '</div>';
   }
@@ -336,21 +337,21 @@
     days().forEach(function (d, i) {
       var last = null; state.sessions.forEach(function (s) { if (s.dayId === d.id) last = s; });
       h += '<div class="card wcard" data-act="openworkout" data-day="' + i + '"><div class="row between"><b style="font-size:18px">' + esc(d.name) + '</b>' + (i === state.nextDayIdx ? '<span class="pill">Next</span>' : '') + '</div>' +
-        '<div class="dim small">' + (d.weekday != null ? WDN[d.weekday] + ' · ' : '') + d.exercises.length + ' exercises · ~' + dayMinutes(d) + ' min' + (last ? ' · last done ' + fmtDate(last.date) : '') + '</div>' + thumbsRow(d, 5) + '</div>';
+        '<div class="dim small">' + (d.weekday != null ? WDN[d.weekday] + ' · ' : '') + L.visibleExercises(d, state.settings.legsPaused).length + ' exercises · ~' + dayMinutes(d) + ' min' + (last ? ' · last done ' + fmtDate(last.date) : '') + '</div>' + thumbsRow(d, 5) + '</div>';
     });
     return h;
   }
   function workoutHTML(di) {
     var d = days()[di]; if (!d) return '<div class="card">Workout not found.</div>';
     var act = state.active && state.active.dayIdx === di ? state.active : null;
-    var h = '<div class="card whead"><div class="row between"><span class="pill">' + (act ? (act.deload ? 'Deload' : 'Week ' + act.pweek) : (isDeloadNow() ? 'Deload' : 'Week ' + phase().week)) + '</span><span class="dim small">' + d.exercises.length + ' exercises · ~' + dayMinutes(d) + ' min</span></div><h2 style="margin-top:8px">' + esc(d.name) + '</h2>';
+    var h = '<div class="card whead"><div class="row between"><span class="pill">' + (act ? (act.deload ? 'Deload' : 'Week ' + act.pweek) : (isDeloadNow() ? 'Deload' : 'Week ' + phase().week)) + '</span><span class="dim small">' + L.visibleExercises(d, state.settings.legsPaused).length + ' exercises · ~' + dayMinutes(d) + ' min</span></div><h2 style="margin-top:8px">' + esc(d.name) + '</h2>';
     if (act) { var pr = activeProgress(act); h += '<div class="progress"><i style="width:' + (pr.tot ? pr.dn / pr.tot * 100 : 0) + '%"></i></div><div class="dim small">' + pr.dn + ' of ' + pr.tot + ' sets done</div>'; }
     h += '</div><div class="card nopad">';
-    (act ? act.exercises : d.exercises).forEach(function (e, j) {
+    (act ? act.exercises : L.visibleExercises(d, state.settings.legsPaused)).forEach(function (e, j) {
       var hist = historyFor(e.name), last = hist[hist.length - 1];
       var pl = act ? null : L.plannedSets(e, { deload: isDeloadNow() }), tg = act ? e.target : { sets: pl.nSets, repMin: e.repMin, repMax: e.repMax, weight: pl.weight };
       var badge = act ? (function () { var dn = e.sets.filter(function (s) { return s.done; }).length; return '<span class="badge' + (dn >= e.sets.length ? ' ok' : '') + '">' + dn + '/' + e.sets.length + '</span>'; })() : '';
-      h += '<div class="exrow" data-act="openex" data-day="' + di + '" data-ex="' + j + '">' + thumbHTML(e.name) + '<div class="info"><div class="nm">' + esc(e.name) + '</div><div class="dim small">' + tg.sets + ' sets × ' + L.repsLabel(tg) + (tg.weight ? ' · ' + L.fmt(tg.weight) + 'kg' : '') + (e.backoff ? ' · top set + back-off' : '') + (e.muscle ? ' · ' + esc(e.muscle) : '') + '</div>' +
+      h += '<div class="exrow" data-act="openex" data-day="' + di + '" data-ex="' + j + '">' + thumbHTML(e.name) + '<div class="info"><div class="nm">' + esc(e.name) + (e.finisher ? ' <span class="tag">optional leg finisher</span>' : '') + '</div><div class="dim small">' + tg.sets + ' sets × ' + L.repsLabel(tg) + (tg.weight ? ' · ' + L.fmt(tg.weight) + 'kg' : '') + (e.backoff ? ' · top set + back-off' : '') + (e.muscle ? ' · ' + esc(e.muscle) : '') + '</div>' +
         (last ? '<div class="dim small">Last: ' + esc(fmtSets(last.sets)) + '</div>' : '') + '</div>' + badge + '<span class="chev">›</span></div>';
     });
     h += '</div>';
@@ -415,6 +416,7 @@
       '<label>…or paste backup JSON</label><textarea id="restoretext" placeholder="{ … }"></textarea><button class="full" style="margin-top:8px" data-act="restorepaste">Restore from pasted text</button>' +
       '<p class="small dim">Restoring replaces everything currently in the app.</p></div>';
     h += '<div class="card"><h2>Training settings</h2>' +
+      '<div class="switch"><span>Legs paused (knee)<br><small class="dim">Hides the optional leg finishers</small></span><input type="checkbox" data-set="legsPaused"' + (st.legsPaused ? ' checked' : '') + '></div>' +
       '<div class="switch"><span>Rest timer after each set</span><input type="checkbox" data-set="restOn"' + (st.restOn ? ' checked' : '') + '></div>' +
       '<div class="switch"><span>Beep when rest ends</span><input type="checkbox" data-set="sound"' + (st.sound ? ' checked' : '') + '></div>' +
       '<div class="switch"><span>Auto-apply coach suggestions<br><small class="dim">Updates next session’s targets when you finish a workout</small></span><input type="checkbox" data-set="autoApply"' + (st.autoApply ? ' checked' : '') + '></div>' +
@@ -753,7 +755,7 @@
     var t = ev.target, a = state.active;
     if (t.id === 'progsel') { ui.progEx = t.value; render(); return; }
     if (t.id === 'progname') { state.program.name = t.value.trim() || 'My programme'; save(); return; }
-    if (t.dataset.set) { var k = t.dataset.set; state.settings[k] = t.type === 'checkbox' ? t.checked : k === 'name' ? t.value.trim() : (k === 'restSecs' ? parseInt(t.value, 10) : parseFloat(t.value)); save(); return; }
+    if (t.dataset.set) { var k = t.dataset.set; state.settings[k] = t.type === 'checkbox' ? t.checked : k === 'name' ? t.value.trim() : (k === 'restSecs' ? parseInt(t.value, 10) : parseFloat(t.value)); save(); if (k === 'legsPaused') render(); return; }
     if (t.dataset.f === 'dayname') { var d = days()[+t.closest('[data-d]').dataset.d]; d.name = t.value.trim() || d.name; save(); return; }
     if (t.dataset.f === 'dayweekday') { days()[+t.closest('[data-d]').dataset.d].weekday = +t.value; save(); return; }
     if (t.dataset.f === 'w' || t.dataset.f === 'r') {

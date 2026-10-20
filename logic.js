@@ -322,6 +322,7 @@
   }
   function describeChange(c) {
     var out = [];
+    if (c.kind === 'programme') return c.note || 'Programme changed';
     if (c.kind === 'swapped') return (c.note || 'Swapped exercise') + ' → ' + c.exName + ' (' + c.after.sets + ' × ' + c.after.reps + ' @ ' + fmt(c.after.weight) + 'kg)';
     if (c.before.weight !== c.after.weight) out.push(fmt(c.before.weight) + ' → ' + fmt(c.after.weight) + 'kg');
     if (c.before.sets !== c.after.sets) out.push(c.before.sets + ' → ' + c.after.sets + ' sets');
@@ -500,6 +501,62 @@
     return n;
   }
 
+  /* ---------- One-time migration: 4-day Push/Pull with optional leg finishers ---------- */
+  function pushPullDays(oldDays) {
+    var pool = {};
+    (oldDays || []).forEach(function (d) { (d.exercises || []).forEach(function (e) {
+      pool[normName(e.name)] = e; if (e.alt) pool[normName(e.alt.name)] = pool[normName(e.alt.name)] || Object.assign({ _fromAlt: true }, e.alt);
+    }); });
+    function take(name, o) {
+      o = o || {};
+      var src = pool[normName(name)], e;
+      if (src) { e = JSON.parse(JSON.stringify(src)); delete e._fromAlt; delete e.alt; }
+      else { e = makeExercise({ exercise: name, sets: o.s, reps: o.r, weight: o.w, type: o.t, notes: o.note, muscle: o.m, rest: o.rest }); e.video = youtubeSearchUrl((o.q || name) + ' form tutorial'); e.blockStart = e.weight; }
+      if (o.s != null) e.sets = o.s;
+      if (o.r != null) { var r = parseReps(o.r); if (e.repMin !== r.min || e.repMax !== r.max) e.nextReps = null; e.repMin = r.min; e.repMax = r.max; }
+      if (src && o.w != null && e.weight !== o.w) { e.weight = o.w; e.blockStart = o.w; e.nextReps = null; }
+      if (o.finisher) { e.finisher = true; e.optional = true; e.type = 'lower'; } else { delete e.finisher; delete e.optional; }
+      if (o.note && src) e.notes = o.note;
+      if (o.alt) { var a = o.alt; e.alt = a; }
+      return e;
+    }
+    function fly() { var f = pool[normName('Low-incline dumbbell fly')] ? take('Low-incline dumbbell fly') : makeFlyAlt(); f.sets = 2; f.repMin = f.repMax = 12; if (!(f.weight > 0)) f.weight = 10; delete f.alt; return f; }
+    var flyEx = fly(), cableFly = take('Cable fly (low-to-high)', { s: 2, r: '12' });
+    flyEx.alt = cableFly; flyEx.notes = 'Bench ~30°. Weight per dumbbell. Slight bend in the elbows, stretch wide, squeeze up. Swap to cable fly if cables are free.';
+    var dbLat = take('Dumbbell lateral raise');
+    var cabLat = take('Cable lateral raise', { s: 3, r: '10-12', w: 5, note: 'Cable, one arm at a time. Build back up to 12 reps. Rest 60s.' });
+    cabLat.alt = dbLat;
+    var FN = 'Optional leg finisher – hidden while “Legs paused (knee)” is on. ';
+    return [
+      { id: newId('d'), name: 'Push A – Heavy', weekday: 0, exercises: [
+        take('Barbell bench press'), take('Incline dumbbell press'),
+        take('Seated dumbbell shoulder press', { s: 3, r: '8-10', w: 20, t: 'upper', m: 'Shoulders, triceps', rest: 120, q: 'Seated dumbbell shoulder press', note: 'Weight per dumbbell. Bench upright. Rest 90–120s.' }),
+        take('Dumbbell lateral raise'), take('Skull crushers (EZ bar)'),
+        take('Leg extension', { s: 2, r: '12', w: 80, finisher: true, note: FN + 'Smooth, pain-free range. Rest 60s.' })] },
+      { id: newId('d'), name: 'Pull A – Heavy', weekday: 1, exercises: [
+        take('Plate-loaded chest-supported row'), take('Wide lat pulldown'), take('Rear delt fly'), take('Dumbbell bicep curl'),
+        take('Leg curl', { s: 2, r: '10', finisher: true, note: FN + 'Machine. Rest 60s.' })] },
+      { id: newId('d'), name: 'Push B – Volume', weekday: 3, exercises: [
+        take('Flat dumbbell bench press'), flyEx, cabLat, take('Tricep dips'),
+        take('Leg press (volume)', { s: 2, r: '12', w: 170, finisher: true, note: FN + 'Controlled, no deep knee bend. Rest 90s.' })] },
+      { id: newId('d'), name: 'Pull B – Volume', weekday: 4, exercises: [
+        take('Seated cable row'), take('Chest-supported dumbbell row', { w: Math.min(28, evenDown((pool[normName('Chest-supported dumbbell row')] || {}).weight || 28)) || 28 }),
+        take('Close-grip pulldown', { s: 3, r: '10', w: 60, t: 'upper', m: 'Lats, mid back, biceps', rest: 90, q: 'Close grip lat pulldown', note: 'V-handle or close grip. Rest 90s.' }),
+        take('Hammer curl', { s: 3, r: '10', w: 14, t: 'upper', m: 'Biceps, forearms', rest: 60, q: 'Dumbbell hammer curl', note: 'Weight per dumbbell. Rest 60s.' }),
+        take('Calf raise', { finisher: true, note: FN + 'Standing, two feet. Rest 45–60s.' }),
+        take('Barbell hip thrust', { s: 2, r: '10', w: 60, finisher: true, note: FN + 'Barbell. Rest 90s.' })] }
+    ];
+  }
+  function migratePushPull(state) {
+    var old = state.program.days;
+    state.program = { name: 'Alastair – Block 1 (Push/Pull)', days: pushPullDays(old) };
+    state.nextDayIdx = 0;
+    (state.changes = state.changes || []).push({ id: newId('c'), date: Date.now(), exId: '', exName: 'Programme', kind: 'programme', source: 'coach',
+      note: 'Switched to 4-day Push/Pull (Mon/Tue/Thu/Fri) with optional leg finishers', before: {}, after: {}, undone: false, noUndo: true });
+    return state;
+  }
+  function visibleExercises(day, legsPaused) { return (day.exercises || []).filter(function (e) { return !(legsPaused && e.finisher); }); }
+
   /* ---------- Built-in programme: Alastair – Block 1 ---------- */
   function builtinAlastairBlock1() {
     function X(o) {
@@ -543,7 +600,7 @@
     PHASE_WEEKS: PHASE_WEEKS, phaseType: phaseType, phaseLabel: phaseLabel, phaseFromWeek: phaseFromWeek, weekDaysDone: weekDaysDone, absWeek: absWeek,
     shouldAdvance: shouldAdvance, deloadTarget: deloadTarget, backoffWeight: backoffWeight, targetOf: targetOf, plannedSets: plannedSets, planText: planText,
     applySuggestion: applySuggestion, isApplied: isApplied, describeChange: describeChange, bestWorkingWeight: bestWorkingWeight, nextBlockWeight: nextBlockWeight,
-    builtinAlastairBlock1: builtinAlastairBlock1,
+    builtinAlastairBlock1: builtinAlastairBlock1, pushPullDays: pushPullDays, migratePushPull: migratePushPull, visibleExercises: visibleExercises,
     historyFor: historyFor, suggestFor: suggestFor, metaOf: metaOf, applyForExercise: applyForExercise, applySessionSuggestions: applySessionSuggestions,
     changeIsCurrent: changeIsCurrent, undoChange: undoChange, rolloverBlock: rolloverBlock, findExercise: findExercise, suggest: suggest, nextWeightFor: nextWeightFor, fixLateralRaise: fixLateralRaise, swapBentOverRow: swapBentOverRow, evenDumbbells: evenDumbbells, swapAlt: swapAlt, addFlyAlt: addFlyAlt, isDumbbell: isDumbbell, chestRow: chestRow, sessionE1RM: sessionE1RM, trend: trend, csvEscape: csvEscape };
   if (typeof module !== 'undefined' && module.exports) module.exports = api; else root.GymLogic = api;
