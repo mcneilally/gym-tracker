@@ -151,3 +151,7 @@ html{scroll-padding-bottom:180px;scroll-padding-top:80px}
 .applybar{margin-top:10px;gap:8px}.applybar button{min-height:44px}
 
 input,select,textarea{font-size:16px}
+
+#rest.soon{border-color:var(--warn)}
+#rest.flash{animation:restflash .5s ease-in-out 6}
+@keyframes restflash{0%,100%{background:#3a2a0b}50%{background:#b07a10}}

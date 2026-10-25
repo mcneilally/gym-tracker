@@ -143,26 +143,48 @@
   /* ============ rest timer ============ */
   var rest = null, restInt = null;
   function startRest(secs) {
-    rest = { end: Date.now() + secs * 1000, fired: false };
+    if (state.settings.sound) audioUnlock();
+    rest = { end: Date.now() + secs * 1000, fired: false, ticked: {} };
     clearInterval(restInt); restInt = setInterval(tickRest, 250); tickRest();
   }
   function stopRest() { rest = null; clearInterval(restInt); var r = $('#rest'); r.hidden = true; }
-  function beep() {
+  /* Web Audio: one shared context, unlocked on a user gesture (iOS needs this). */
+  var actx = null;
+  function audioUnlock() {
     try {
-      var C = window.AudioContext || window.webkitAudioContext, c = new C(), o = c.createOscillator(), g = c.createGain();
-      o.connect(g); g.connect(c.destination); o.frequency.value = 880; g.gain.value = 0.2; o.start(); o.stop(c.currentTime + 0.25);
-      setTimeout(function () { c.close(); }, 600);
+      var C = window.AudioContext || window.webkitAudioContext; if (!C) return null;
+      if (!actx) actx = new C();
+      if (actx.state !== 'running' && actx.resume) actx.resume();
+      if (!actx._unlocked) { var buf = actx.createBuffer(1, 1, 22050), src = actx.createBufferSource(); src.buffer = buf; src.connect(actx.destination); src.start(0); actx._unlocked = true; }
+      return actx;
+    } catch (e) { return null; }
+  }
+  function tone(freq, start, dur, vol) {
+    var c = actx, o = c.createOscillator(), g = c.createGain(), t = c.currentTime + start;
+    o.type = 'square'; o.frequency.value = freq; o.connect(g); g.connect(c.destination);
+    g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(vol, t + 0.01);
+    g.gain.setValueAtTime(vol, t + dur - 0.03); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    o.start(t); o.stop(t + dur + 0.02);
+  }
+  function playBeeps(kind) {
+    try {
+      var c = audioUnlock(); if (!c) return;
+      var go = function () { if (kind === 'tick') tone(660, 0, 0.08, 0.35); else for (var i = 0; i < 3; i++) tone(880, i * 0.3, 0.18, 0.9); };
+      if (c.state === 'running') go(); else c.resume().then(go, function () { });
     } catch (e) { }
   }
+  function beep() { playBeeps('end'); }
+  ['touchend', 'pointerdown', 'click', 'keydown'].forEach(function (ev) { document.addEventListener(ev, function () { if (state.settings.sound) audioUnlock(); }, { capture: true, passive: true }); });
   function tickRest() {
     var r = $('#rest'); if (!rest) return;
     var left = Math.ceil((rest.end - Date.now()) / 1000);
     r.hidden = false;
     if (left <= 0) {
-      if (!rest.fired) { rest.fired = true; if (navigator.vibrate) navigator.vibrate([300, 100, 300]); if (state.settings.sound) beep(); setTimeout(function () { if (rest && rest.fired) stopRest(); }, 15000); }
-      r.className = 'over'; r.innerHTML = '<div class="t">Rest over – go! 💪</div><button class="sm" data-rest="stop">OK</button>'; return;
+      if (!rest.fired) { rest.fired = true; if (navigator.vibrate) navigator.vibrate([300, 100, 300, 100, 300]); if (state.settings.sound) beep(); setTimeout(function () { if (rest && rest.fired) stopRest(); }, 15000); }
+      r.className = 'over flash'; r.innerHTML = '<div class="t">Rest over – go! 💪</div><button class="sm" data-rest="stop">OK</button>'; return;
     }
-    r.className = '';
+    r.className = left <= 3 ? 'soon' : '';
+    if (left <= 3 && !rest.ticked[left] && state.settings.sound && rest.end - Date.now() > (left - 1) * 1000 + 600) { rest.ticked[left] = true; playBeeps('tick'); }
     var m = Math.floor(left / 60), s = left % 60;
     r.innerHTML = '<div class="t">⏱ ' + m + ':' + (s < 10 ? '0' : '') + s + '</div><button class="sm" data-rest="-15">−15</button><button class="sm" data-rest="+15">+15</button><button class="sm" data-rest="stop">Skip</button>';
   }
@@ -419,7 +441,7 @@
     h += '<div class="card"><h2>Training settings</h2>' +
       '<div class="switch"><span>Legs paused (knee)<br><small class="dim">Hides the optional leg finishers</small></span><input type="checkbox" data-set="legsPaused"' + (st.legsPaused ? ' checked' : '') + '></div>' +
       '<div class="switch"><span>Rest timer after each set</span><input type="checkbox" data-set="restOn"' + (st.restOn ? ' checked' : '') + '></div>' +
-      '<div class="switch"><span>Beep when rest ends</span><input type="checkbox" data-set="sound"' + (st.sound ? ' checked' : '') + '></div>' +
+      '<div class="switch"><span>Beep when rest ends<br><small class="dim">3-2-1 ticks, then 3 beeps. iPhone: silent switch off, volume up.</small></span><button class="sm" data-act="testsound">Test sound</button><input type="checkbox" data-set="sound"' + (st.sound ? ' checked' : '') + '></div>' +
       '<div class="switch"><span>Auto-apply coach suggestions<br><small class="dim">Updates next session’s targets when you finish a workout</small></span><input type="checkbox" data-set="autoApply"' + (st.autoApply ? ' checked' : '') + '></div>' +
       '<div class="switch"><span>Auto-advance the week<br><small class="dim">When every day of the week is done</small></span><input type="checkbox" data-set="autoPhase"' + (st.autoPhase ? ' checked' : '') + '></div>' +
       '<label>Rest length (seconds)</label><select data-set="restSecs">' + [45, 60, 90, 120, 150, 180, 240].map(function (s) { return '<option' + (st.restSecs === s ? ' selected' : '') + '>' + s + '</option>'; }).join('') + '</select>' +
@@ -687,6 +709,7 @@
         save(); toast('Swapped to ' + pe2.name); render(); break;
       }
       case 'editvideo': editVideoModal(exName()); break;
+      case 'testsound': audioUnlock(); playBeeps('end'); if (navigator.vibrate) navigator.vibrate(200); break;
       case 'restnow': startRest(state.settings.restSecs); break;
       case 'seldate': ui.selDate = +b.dataset.t; render(); break;
       case 'calsel': ui.selDate = +b.dataset.t; render(); break;
@@ -793,8 +816,9 @@
   if (state.active) { /* resume */ }
   if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(function () { });
   if ('serviceWorker' in navigator) window.addEventListener('load', function () { navigator.serviceWorker.register('sw.js').catch(function () { }); });
-  document.addEventListener('visibilitychange', function () { if (!document.hidden && rest) tickRest(); });
-  window.__gym = { get state() { return state; }, L: L, render: render, normalise: normalise };
+  document.addEventListener('visibilitychange', function () { if (!document.hidden) { if (state.settings.sound && actx && actx.state !== 'running') actx.resume().catch(function () { }); if (rest) tickRest(); } });
+  window.addEventListener('pageshow', function () { if (rest) tickRest(); }); window.addEventListener('focus', function () { if (rest) tickRest(); });
+  window.__gym = { get state() { return state; }, L: L, render: render, normalise: normalise, startRest: startRest };
 })();
 
 // iOS: undo any window shift left by the keyboard
