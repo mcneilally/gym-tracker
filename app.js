@@ -42,6 +42,12 @@
     if (!s.migrations.altFly1) { L.addFlyAlt(s.program.days); s.migrations.altFly1 = true; }
     if (!s.migrations.pushPull1) { if (!s.active) { if (s.program.name === 'Alastair – Block 1' && s.program.days.length) L.migratePushPull(s); s.migrations.pushPull1 = true; } }
     if (!s.migrations.legsBack1 && s.migrations.pushPull1 && /Push\/Pull/.test((s.program || {}).name || '')) { L.legsBack(s); s.migrations.legsBack1 = true; }
+    if (!s.migrations.weekReset1 && /Push\/Pull/.test((s.program || {}).name || '')) {
+      s.week = 1; s.phaseSince = Date.now(); s.nextDayIdx = 0;
+      if (s.active && !s.active.deload) { s.active.week = 1; s.active.block = 1; s.active.pweek = 1; }
+      s.changes.push({ id: L.newId('c'), date: Date.now(), exId: '', exName: 'Programme', kind: 'programme', source: 'coach', note: 'Week count reset to Week 1 – weights kept', before: {}, after: {}, undone: false, noUndo: true });
+      s.migrations.weekReset1 = true;
+    }
     return s;
   }
   function load() { try { return normalise(JSON.parse(localStorage.getItem(KEY))); } catch (e) { return defaults(); } }
