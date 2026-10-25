@@ -7,7 +7,7 @@
   /* ============ state ============ */
   function defaults() {
     return { v: 2, program: { name: 'My programme', days: [] }, week: 1, nextDayIdx: 0, sessions: [], active: null, changes: [], phaseSince: 0,
-      videos: {}, settings: { name: 'Alastair', restOn: true, restSecs: 90, sound: true, step: 2.5, autoApply: true, autoPhase: true, legsPaused: true }, lastBackup: 0, seeded: false, created: Date.now() };
+      videos: {}, settings: { name: 'Alastair', restOn: true, restSecs: 90, sound: true, step: 2.5, autoApply: true, autoPhase: true, legsPaused: false }, lastBackup: 0, seeded: false, created: Date.now() };
   }
   function normalise(s) {
     var d = defaults();
@@ -41,6 +41,7 @@
     if (!s.migrations.evenDB2) { L.evenDumbbells(s.program.days, s.changes); s.migrations.evenDB2 = true; }
     if (!s.migrations.altFly1) { L.addFlyAlt(s.program.days); s.migrations.altFly1 = true; }
     if (!s.migrations.pushPull1) { if (!s.active) { if (s.program.name === 'Alastair – Block 1' && s.program.days.length) L.migratePushPull(s); s.migrations.pushPull1 = true; } }
+    if (!s.migrations.legsBack1 && s.migrations.pushPull1 && /Push\/Pull/.test((s.program || {}).name || '')) { L.legsBack(s); s.migrations.legsBack1 = true; }
     return s;
   }
   function load() { try { return normalise(JSON.parse(localStorage.getItem(KEY))); } catch (e) { return defaults(); } }
@@ -290,7 +291,7 @@
       var a = state.active, pr = activeProgress(a);
       h += '<div class="hero" style="border-color:var(--ok)"><span class="pill" style="background:var(--ok);color:#04210f">In progress</span><h2>' + esc(a.dayName) + '</h2><div class="dim small">' + pr.dn + ' of ' + pr.tot + ' sets done</div><div class="progress"><i style="width:' + (pr.tot ? pr.dn / pr.tot * 100 : 0) + '%"></i></div><button class="primary big full" data-act="openworkout" data-day="' + a.dayIdx + '">Resume workout</button></div>';
     } else if (!days().length) {
-      h += '<div class="card"><h2>Let’s set up a programme</h2><p class="dim">You don’t have a programme yet.</p><button class="primary full" data-act="loadmine">Load my programme (Alastair – Block 1)</button><button class="full" style="margin-top:8px" data-act="loadsample">Load sample 3-day full body</button><button class="full" style="margin-top:8px" data-go="calendar" data-ctab="prog">Import or build my own</button></div>';
+      h += '<div class="card"><h2>Let’s set up a programme</h2><p class="dim">You don’t have a programme yet.</p><button class="primary full" data-act="loadmine">Load my programme (Push/Pull)</button><button class="full" style="margin-top:8px" data-act="loadsample">Load sample 3-day full body</button><button class="full" style="margin-top:8px" data-go="calendar" data-ctab="prog">Import or build my own</button></div>';
     } else {
       var sched = dayFor(sel), done = doneOn(sel);
       if (sched.length) sched.forEach(function (d) { var di = days().indexOf(d); h += workoutHero(d, di, done.some(function (s) { return s.dayId === d.id; })); });
@@ -442,7 +443,7 @@
   }
   function repsTxt(ex) { return ex.sets + ' × ' + L.repsLabel(ex) + (ex.weight ? ' @ ' + L.fmt(ex.weight) + 'kg' : '') + (ex.backoff ? ' · top set + back-off' : ''); }
   function programHTML() {
-    var h = '<div class="card"><b>Alastair – Block 1</b><div class="dim small">3 full-body days (Mon/Wed/Fri), machines and free weights, no free-standing single-leg moves. Your logged history is kept.</div><button class="primary full" style="margin-top:8px" data-act="loadmine">Load my programme</button></div>';
+    var h = '<div class="card"><b>Alastair – Block 1</b><div class="dim small">4 days Push/Pull (Mon/Tue/Thu/Fri) with optional leg finishers, machines and free weights, no free-standing single-leg moves. Your logged history is kept.</div><button class="primary full" style="margin-top:8px" data-act="loadmine">Load my programme</button></div>';
     h += '<div class="card"><label style="margin-top:0">Programme name</label><input id="progname" value="' + esc(state.program.name) + '"></div>';
     h += '<div class="card"><details><summary>⬆️ Import a programme (CSV / JSON / paste)</summary>' +
       '<p class="small dim">Columns: <b>day, exercise, sets, reps, weight, notes</b> (reps can be a range like 8-10; weight in kg). Comma, semicolon or tab separated. JSON also works.</p>' +
@@ -769,13 +770,12 @@
 
   /* ============ built-in programme ============ */
   function loadMine(confirmIt) {
-    if (confirmIt && days().length && !confirm('Replace your current programme with “Alastair – Block 1”? Your logged history is kept.')) return;
-    var pr = L.builtinAlastairBlock1();
-    L.autoWeekdays(pr.days);
+    if (confirmIt && days().length && !confirm('Replace your current programme with “Alastair – Block 1 (Push/Pull)”? Your logged history is kept.')) return;
+    var pr = { name: 'Alastair – Block 1 (Push/Pull)', days: L.pushPullDays(L.builtinAlastairBlock1().days) };
     pr.days.forEach(function (d) { d.exercises.forEach(function (e) { e.blockStart = e.weight; }); });
     state.program = { name: pr.name, days: pr.days }; state.nextDayIdx = 0; state.seeded = true;
     if (!state.sessions.length) { state.week = 1; state.phaseSince = Date.now(); }
-    save(); render(); if (confirmIt) toast('Loaded Alastair – Block 1');
+    save(); render(); if (confirmIt) toast('Loaded Alastair – Push/Pull');
   }
 
   /* ============ sample ============ */

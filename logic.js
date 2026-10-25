@@ -526,26 +526,51 @@
     var dbLat = take('Dumbbell lateral raise');
     var cabLat = take('Cable lateral raise', { s: 3, r: '10-12', w: 5, note: 'Cable, one arm at a time. Build back up to 12 reps. Rest 60s.' });
     cabLat.alt = dbLat;
-    var FN = 'Optional leg finisher – hidden while “Legs paused (knee)” is on. ';
+    var FN = 'Optional leg finisher. ' + KNEE_NOTE + ' ';
     return [
       { id: newId('d'), name: 'Push A – Heavy', weekday: 0, exercises: [
         take('Barbell bench press'), take('Incline dumbbell press'),
         take('Seated dumbbell shoulder press', { s: 3, r: '8-10', w: 20, t: 'upper', m: 'Shoulders, triceps', rest: 120, q: 'Seated dumbbell shoulder press', note: 'Weight per dumbbell. Bench upright. Rest 90–120s.' }),
         take('Dumbbell lateral raise'), take('Skull crushers (EZ bar)'),
-        take('Leg extension', { s: 2, r: '12', w: 80, finisher: true, note: FN + 'Smooth, pain-free range. Rest 60s.' })] },
+        take('Leg extension', { s: 2, r: '12', w: 50, finisher: true, note: FN + 'Smooth, pain-free range. Rest 60s.' })] },
       { id: newId('d'), name: 'Pull A – Heavy', weekday: 1, exercises: [
         take('Plate-loaded chest-supported row'), take('Wide lat pulldown'), take('Rear delt fly'), take('Dumbbell bicep curl'),
-        take('Leg curl', { s: 2, r: '10', finisher: true, note: FN + 'Machine. Rest 60s.' })] },
+        take('Leg curl', { s: 2, r: '12', w: 55, finisher: true, note: FN + 'Machine. Rest 60s.' })] },
       { id: newId('d'), name: 'Push B – Volume', weekday: 3, exercises: [
         take('Flat dumbbell bench press'), flyEx, cabLat, take('Tricep dips'),
-        take('Leg press (volume)', { s: 2, r: '12', w: 170, finisher: true, note: FN + 'Controlled, no deep knee bend. Rest 90s.' })] },
+        take('Leg press (volume)', { s: 2, r: '12', w: 120, finisher: true, note: FN + 'Controlled, no deep knee bend. Rest 90s.' })] },
       { id: newId('d'), name: 'Pull B – Volume', weekday: 4, exercises: [
         take('Seated cable row'), take('Chest-supported dumbbell row', { w: Math.min(28, evenDown((pool[normName('Chest-supported dumbbell row')] || {}).weight || 28)) || 28 }),
         take('Close-grip pulldown', { s: 3, r: '10', w: 60, t: 'upper', m: 'Lats, mid back, biceps', rest: 90, q: 'Close grip lat pulldown', note: 'V-handle or close grip. Rest 90s.' }),
         take('Hammer curl', { s: 3, r: '10', w: 14, t: 'upper', m: 'Biceps, forearms', rest: 60, q: 'Dumbbell hammer curl', note: 'Weight per dumbbell. Rest 60s.' }),
-        take('Calf raise', { finisher: true, note: FN + 'Standing, two feet. Rest 45–60s.' }),
-        take('Barbell hip thrust', { s: 2, r: '10', w: 60, finisher: true, note: FN + 'Barbell. Rest 90s.' })] }
+        take('Calf raise', { s: 2, r: '12', w: 0, finisher: true, note: FN + 'Standing, two feet. Rest 45–60s.' }),
+        take('Barbell hip thrust', { s: 2, r: '10', w: 40, finisher: true, note: FN + 'Barbell. Rest 90s.' })] }
     ];
+  }
+  var KNEE_NOTE = 'Knee return: easy, pain-free range, stop if the knee complains.';
+  var LEGS_BACK = [
+    { id: 'emup4k7llbyik', n: 'Leg extension', s: 2, min: 12, max: 12, w: 50 },
+    { id: 'emup4k7ll5h4b', n: 'Leg curl', s: 2, min: 12, max: 12, w: 55 },
+    { id: 'emup4k7llh067', n: 'Leg press (volume)', s: 2, min: 12, max: 12, w: 120 },
+    { id: 'emup4k7llesbu', n: 'Calf raise', s: 2, min: 12, max: 12, w: 0 },
+    { id: 'emup4k7llcogc', n: 'Barbell hip thrust', s: 2, min: 10, max: 10, w: 40 }];
+  function legsBack(state) {
+    state.settings = state.settings || {}; state.settings.legsPaused = false;
+    var all = []; ((state.program || {}).days || []).forEach(function (d) { (d.exercises || []).forEach(function (e) { all.push(e); }); });
+    state.changes = state.changes || [];
+    LEGS_BACK.forEach(function (t) {
+      var hits = all.filter(function (e) { return e.id === t.id; });
+      if (!hits.length) hits = all.filter(function (e) { return e.finisher && normName(e.name) === normName(t.n); });
+      hits.forEach(function (e) {
+        var before = { weight: e.weight, reps: e.nextReps != null ? e.nextReps : e.repMin, sets: e.sets };
+        e.weight = t.w; e.blockStart = t.w; e.sets = t.s; e.repMin = t.min; e.repMax = t.max; e.nextReps = null; delete e.appliedSid;
+        var rest = String(e.notes || '').replace(/Optional leg finisher\s*[–-]\s*hidden while[^.]*\.\s*/i, '').replace(KNEE_NOTE, '').trim();
+        e.notes = ('Optional leg finisher. ' + KNEE_NOTE + ' ' + rest).trim();
+        state.changes.push({ id: newId('c'), date: Date.now(), exId: e.id, exName: e.name, kind: 'corrected', source: 'coach', note: 'Knee return – starting easy',
+          before: before, after: { weight: t.w, reps: t.min, sets: t.s }, undone: false });
+      });
+    });
+    return state;
   }
   function migratePushPull(state) {
     var old = state.program.days;
@@ -600,7 +625,7 @@
     PHASE_WEEKS: PHASE_WEEKS, phaseType: phaseType, phaseLabel: phaseLabel, phaseFromWeek: phaseFromWeek, weekDaysDone: weekDaysDone, absWeek: absWeek,
     shouldAdvance: shouldAdvance, deloadTarget: deloadTarget, backoffWeight: backoffWeight, targetOf: targetOf, plannedSets: plannedSets, planText: planText,
     applySuggestion: applySuggestion, isApplied: isApplied, describeChange: describeChange, bestWorkingWeight: bestWorkingWeight, nextBlockWeight: nextBlockWeight,
-    builtinAlastairBlock1: builtinAlastairBlock1, pushPullDays: pushPullDays, migratePushPull: migratePushPull, visibleExercises: visibleExercises,
+    builtinAlastairBlock1: builtinAlastairBlock1, pushPullDays: pushPullDays, migratePushPull: migratePushPull, legsBack: legsBack, visibleExercises: visibleExercises,
     historyFor: historyFor, suggestFor: suggestFor, metaOf: metaOf, applyForExercise: applyForExercise, applySessionSuggestions: applySessionSuggestions,
     changeIsCurrent: changeIsCurrent, undoChange: undoChange, rolloverBlock: rolloverBlock, findExercise: findExercise, suggest: suggest, nextWeightFor: nextWeightFor, fixLateralRaise: fixLateralRaise, swapBentOverRow: swapBentOverRow, evenDumbbells: evenDumbbells, swapAlt: swapAlt, addFlyAlt: addFlyAlt, isDumbbell: isDumbbell, chestRow: chestRow, sessionE1RM: sessionE1RM, trend: trend, csvEscape: csvEscape };
   if (typeof module !== 'undefined' && module.exports) module.exports = api; else root.GymLogic = api;
