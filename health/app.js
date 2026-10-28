@@ -54,7 +54,7 @@ function parsePayload(raw){
   if(/^[A-Za-z0-9+/=_-]{40,}$/.test(raw)){try{raw=decodeURIComponent(escape(atob(raw.replace(/-/g,'+').replace(/_/g,'/'))))}catch(e){}}
   try{localStorage.setItem('hx_last_raw',raw.slice(0,200000))}catch(e){}
   if(raw[0]=='{'){try{const o=JSON.parse(raw);if(o.days||o.workouts)return {__backup:o};const r={};for(const k in o)r[k.toLowerCase()]=splitList(o[k]);return r}catch(e){}}
-  const r={};const re=/(?:^|\s)#\s*([a-z][a-z0-9_]*)\b[ \t]*[:=]?/gi;const hs=[];let m;
+  const r={};const re=/(?:^|\s)#\s*([a-z]+(?:_[a-z]+)?)(?![a-z])[ \t]*[:=]?/gi;const hs=[];let m;
   while((m=re.exec(raw)))hs.push({k:m[1].toLowerCase(),i:m.index,e:re.lastIndex});
   hs.forEach((h,j)=>{const body=raw.slice(h.e,j+1<hs.length?hs[j+1].i:raw.length);(r[h.k]=r[h.k]||[]).push(...sectionItems(h.k,body))});
   return r;
