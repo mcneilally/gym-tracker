@@ -32,19 +32,35 @@ const dkey=d=>{const x=new Date(d);return x.getFullYear()+'-'+String(x.getMonth(
 const splitList=v=>Array.isArray(v)?v:String(v??'').split(/\r?\n|;|\|/).map(x=>x.trim()).filter(Boolean);
 
 // Parse "#key" sectioned text (what the Shortcut sends) or JSON → {key:[...]}
+const TM='\\d{1,2}[:.]\\d{2}(?:[:.]\\d{2})?(?:\\s?[AaPp]\\.?[Mm]\\.?)?';
+const DATE_RE=new RegExp([
+ '\\d{4}-\\d{2}-\\d{2}(?:[T ]\\d{2}:\\d{2}(?::\\d{2}(?:\\.\\d+)?)?(?:Z|[+-]\\d{2}:?\\d{2})?)?',
+ '\\d{1,2}\\s[A-Za-z]{3,9}\\.?,?\\s\\d{4}(?:,?\\s(?:at\\s)?'+TM+')?',
+ '[A-Za-z]{3,9}\\.?\\s\\d{1,2},?\\s\\d{4}(?:,?\\s(?:at\\s)?'+TM+')?',
+ '\\d{1,2}[/.]\\d{1,2}[/.]\\d{2,4}(?:,?\\s(?:at\\s)?'+TM+')?',
+ '(?:Today|Yesterday)(?:,?\\s(?:at\\s)?'+TM+')?'].join('|'),'gi');
+const SLEEP_RE=/in\s?bed|asleep(?:\s?(?:core|deep|rem|unspecified))?|awake|core|deep|rem|unspecified/gi;
+function sectionItems(key,body){
+  body=body.replace(/[\u202f\u00a0\u2009]/g,' ').trim();if(!body)return [];
+  const lines=body.split(/\r?\n/).map(x=>x.trim()).filter(Boolean);
+  if(/_(d|s|e)$/.test(key)&&key!=='wk_s'||/^(wk_s|wk_e|sl_s|sl_e)$/.test(key))return body.match(DATE_RE)||[];
+  if(key==='sl'||key==='wk'){if(lines.length>1)return lines;return key==='sl'?(body.match(SLEEP_RE)||[]):body.split(/\s*[,;|]\s*/).filter(Boolean)}
+  if(lines.length>1)return lines.map(l=>l.replace(DATE_RE,' ').trim()).filter(l=>/\d/.test(l));
+  const t=body.replace(DATE_RE,' ');return t.match(/-?\d{1,3}(?:,\d{3})+(?:\.\d+)?|-?\d+(?:\.\d+)?(?:\s?(?:km|mi|m|%|kg|cm))?/g)||[];
+}
 function parsePayload(raw){
   raw=String(raw||'').trim();if(!raw)return {};
-  for(let i=0;i<2&&/%[0-9A-F]{2}/i.test(raw);i++){try{raw=decodeURIComponent(raw.replace(/\+/g,' '))}catch(e){break}}
+  for(let i=0;i<3&&/%[0-9A-F]{2}/i.test(raw);i++){try{raw=decodeURIComponent(raw.replace(/\+/g,' '))}catch(e){break}}
   if(/^[A-Za-z0-9+/=_-]{40,}$/.test(raw)){try{raw=decodeURIComponent(escape(atob(raw.replace(/-/g,'+').replace(/_/g,'/'))))}catch(e){}}
+  try{localStorage.setItem('hx_last_raw',raw.slice(0,200000))}catch(e){}
   if(raw[0]=='{'){try{const o=JSON.parse(raw);if(o.days||o.workouts)return {__backup:o};const r={};for(const k in o)r[k.toLowerCase()]=splitList(o[k]);return r}catch(e){}}
-  const r={};let cur=null;
-  for(let line of raw.split(/\r?\n/)){line=line.trim();if(!line)continue;
-    const m=line.match(/^#\s*([a-z0-9_]+)\s*[:=]?\s*(.*)$/i);
-    if(m){cur=m[1].toLowerCase();r[cur]=r[cur]||[];if(m[2])r[cur].push(...m[2].split(/\s*;\s*/).filter(Boolean));}
-    else if(cur)r[cur].push(line);}
+  const r={};const re=/(?:^|\s)#\s*([a-z][a-z0-9_]*)\b[ \t]*[:=]?/gi;const hs=[];let m;
+  while((m=re.exec(raw)))hs.push({k:m[1].toLowerCase(),i:m.index,e:re.lastIndex});
+  hs.forEach((h,j)=>{const body=raw.slice(h.e,j+1<hs.length?hs[j+1].i:raw.length);(r[h.k]=r[h.k]||[]).push(...sectionItems(h.k,body))});
   return r;
 }
-const pairs=(r,k,dk)=>{const v=r[k]||[],d=r[dk||k+'_d']||[];return v.map((x,i)=>({v:num(x),d:parseDate(d[i])})).filter(p=>!isNaN(p.v)&&p.d)};
+const RANGE={hrv:[5,250],rhr:[30,120],rr:[6,40],vo2:[15,80],whr:[40,180],steps:[0,100000],kcal:[0,10000],dist:[0,200],wt:[30,300],bf:[0.01,70],lbm:[20,200],hr:[30,230]};
+const pairs=(r,k,dk)=>{const v=r[k]||[],d=r[dk||k+'_d']||[],rg=RANGE[k];return v.map((x,i)=>({v:num(x),d:parseDate(d[i])})).filter(p=>!isNaN(p.v)&&p.d&&(!rg||(p.v>=rg[0]&&p.v<=rg[1])))};
 
 function mergePayload(r){
   if(r.__backup){const o=r.__backup;Object.assign(DAYS,o.days||{});mergeWk(o.workouts||[]);if(o.profile)Object.assign(PROF,o.profile);save();return Object.keys(o.days||{}).length}
@@ -288,10 +304,12 @@ const TEMPLATE=`#hrv
 [Heart Rate › Start Date]`.replace(/  \(.*\)/g,'');
 function dataV(){V.innerHTML=`<h1>Data</h1><div class="card"><div class="sub">${keys().length} days · ${WK.length} workouts</div>
   <h2>Paste import</h2><textarea id="paste" rows="6" placeholder="Paste Shortcut text, a URL or a backup"></textarea><button class="b" onclick="imp($('#paste').value.replace(/^.*#import=/s,''))">Import</button>
+  <h2>Last import (raw)</h2><textarea id="raw" rows="6" readonly>${(localStorage.getItem('hx_last_raw')||'none yet').replace(/</g,'&lt;')}</textarea><button class="b g" onclick="copyRaw()">Copy raw import</button>
   <h2>Backup</h2><button class="b g" onclick="exportJ()">Export backup (JSON)</button><button class="b g" onclick="demo()">Load demo data</button>
   <button class="b g" style="color:#ff6b6b" onclick="if(confirm('Delete all health data?')){['hx_days','hx_workouts','hx_hr'].forEach(k=>localStorage.removeItem(k));DAYS={};WK=[];show('today')}">Clear data</button></div>`}
 function exportJ(){const s=JSON.stringify({days:DAYS,workouts:WK,profile:PROF});const b=new Blob([s],{type:'application/json'});const a=document.createElement('a');a.href=URL.createObjectURL(b);a.download='health-backup-'+dkey(new Date())+'.json';a.click();
   if(navigator.clipboard)navigator.clipboard.writeText(s).catch(()=>{});toast('Exported')}
+function copyRaw(){const t=localStorage.getItem('hx_last_raw')||'';(navigator.clipboard?navigator.clipboard.writeText(t):Promise.reject()).then(()=>toast('Copied'),()=>{const e=$('#raw');e.select();document.execCommand('copy');toast('Copied')})}
 function toast(t){const e=$('#toast');e.textContent=t;e.style.display='block';clearTimeout(toast.t);toast.t=setTimeout(()=>e.style.display='none',2500)}
 function imp(raw){try{const n=mergePayload(parsePayload(raw));toast(n?`Synced ✓ ${n} day${n>1?'s':''}`:'Nothing found');show('today');return n}catch(e){console.error(e);toast('Import failed')}}
 const VIEWS={today,trends,body:bodyV,acts:activities,setup,data:dataV};let cur='today';
@@ -317,5 +335,6 @@ function demo(){const now=new Date();let seed=7;const rnd=()=>(seed=(seed*9301+4
 
 // Nav: add Activities tab label
 (function(){const n=$('#tabs');const b=document.createElement('button');b.dataset.t='acts';b.textContent='Activity';b.onclick=()=>show('acts');n.insertBefore(b,n.children[2])})();
+if(!localStorage.getItem('hx_fix1')){['hx_days','hx_workouts','hx_hr'].forEach(k=>localStorage.removeItem(k));DAYS={};WK=[];localStorage.setItem('hx_fix1','1')}
 show('today');checkHash();
 if('serviceWorker' in navigator)navigator.serviceWorker.register('sw.js',{scope:'./'}).catch(()=>{});
