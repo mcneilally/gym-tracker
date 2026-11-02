@@ -543,17 +543,36 @@
         take('Seated cable row'), take('Chest-supported dumbbell row', { w: Math.min(28, evenDown((pool[normName('Chest-supported dumbbell row')] || {}).weight || 28)) || 28 }),
         take('Close-grip pulldown', { s: 3, r: '10', w: 60, t: 'upper', m: 'Lats, mid back, biceps', rest: 90, q: 'Close grip lat pulldown', note: 'V-handle or close grip. Rest 90s.' }),
         take('Hammer curl', { s: 3, r: '10', w: 14, t: 'upper', m: 'Biceps, forearms', rest: 60, q: 'Dumbbell hammer curl', note: 'Weight per dumbbell. Rest 60s.' }),
-        take('Calf raise', { s: 2, r: '12', w: 0, finisher: true, note: FN + 'Standing, two feet. Rest 45–60s.' }),
-        take('Barbell hip thrust', { s: 2, r: '10', w: 40, finisher: true, note: FN + 'Barbell. Rest 90s.' })] }
+        take('Calf raise', { s: 2, r: '12', w: 40, finisher: true, note: FN + 'Machine. Rest 45–60s.' }),
+        take('Barbell hip thrust', { s: 2, r: '10', w: 42.5, finisher: true, note: FN + 'Machine. Rest 90s.' })] }
     ];
+  }
+  var MACHINE_LEGS = [
+    { id: 'emup4k7llesbu', old: 'Calf raise', n: 'Calf raise machine', s: 2, min: 12, max: 12, w: 40, rest: 60, q: 'Calf raise machine', note: 'Machine. Rest 45–60s.' },
+    { id: 'emup4k7llcogc', old: 'Barbell hip thrust', n: 'Hip thrust machine', s: 2, min: 10, max: 10, w: 42.5, rest: 90, q: 'Hip thrust machine', note: 'Machine. Rest 90s.' }];
+  function machineLegs(state, log) {
+    var all = []; ((state.program || {}).days || []).forEach(function (d) { (d.exercises || []).forEach(function (e) { all.push(e); }); });
+    MACHINE_LEGS.forEach(function (t) {
+      var hits = all.filter(function (e) { return e.id === t.id; });
+      if (!hits.length) hits = all.filter(function (e) { return e.finisher && normName(e.name) === normName(t.old); });
+      hits.forEach(function (e) {
+        var oldName = e.name;
+        e.name = t.n; e.notes = 'Optional leg finisher. ' + KNEE_NOTE + ' ' + t.note; e.video = youtubeSearchUrl(t.q);
+        e.sets = t.s; e.repMin = t.min; e.repMax = t.max; e.rest = t.rest;
+        if (!(e.weight > 0)) { e.weight = t.w; e.blockStart = t.w; }
+        if (!(e.blockStart > 0)) e.blockStart = e.weight;
+        if (log) (state.changes = state.changes || []).push({ id: newId('c'), date: Date.now(), exId: e.id, exName: e.name, kind: 'programme', source: 'coach', note: 'Switched ' + oldName + ' to ' + t.n, before: {}, after: {}, undone: false, noUndo: true });
+      });
+    });
+    return state;
   }
   var KNEE_NOTE = 'Knee return: easy, pain-free range, stop if the knee complains.';
   var LEGS_BACK = [
     { id: 'emup4k7llbyik', n: 'Leg extension', s: 2, min: 12, max: 12, w: 50 },
     { id: 'emup4k7ll5h4b', n: 'Leg curl', s: 2, min: 12, max: 12, w: 55 },
     { id: 'emup4k7llh067', n: 'Leg press (volume)', s: 2, min: 12, max: 12, w: 120 },
-    { id: 'emup4k7llesbu', n: 'Calf raise', s: 2, min: 12, max: 12, w: 0 },
-    { id: 'emup4k7llcogc', n: 'Barbell hip thrust', s: 2, min: 10, max: 10, w: 40 }];
+    { id: 'emup4k7llesbu', n: 'Calf raise machine', s: 2, min: 12, max: 12, w: 40 },
+    { id: 'emup4k7llcogc', n: 'Hip thrust machine', s: 2, min: 10, max: 10, w: 42.5 }];
   function legsBack(state) {
     state.settings = state.settings || {}; state.settings.legsPaused = false;
     var all = []; ((state.program || {}).days || []).forEach(function (d) { (d.exercises || []).forEach(function (e) { all.push(e); }); });
@@ -625,7 +644,7 @@
     PHASE_WEEKS: PHASE_WEEKS, phaseType: phaseType, phaseLabel: phaseLabel, phaseFromWeek: phaseFromWeek, weekDaysDone: weekDaysDone, absWeek: absWeek,
     shouldAdvance: shouldAdvance, deloadTarget: deloadTarget, backoffWeight: backoffWeight, targetOf: targetOf, plannedSets: plannedSets, planText: planText,
     applySuggestion: applySuggestion, isApplied: isApplied, describeChange: describeChange, bestWorkingWeight: bestWorkingWeight, nextBlockWeight: nextBlockWeight,
-    builtinAlastairBlock1: builtinAlastairBlock1, pushPullDays: pushPullDays, migratePushPull: migratePushPull, legsBack: legsBack, visibleExercises: visibleExercises,
+    builtinAlastairBlock1: builtinAlastairBlock1, pushPullDays: pushPullDays, migratePushPull: migratePushPull, legsBack: legsBack, machineLegs: machineLegs, visibleExercises: visibleExercises,
     historyFor: historyFor, suggestFor: suggestFor, metaOf: metaOf, applyForExercise: applyForExercise, applySessionSuggestions: applySessionSuggestions,
     changeIsCurrent: changeIsCurrent, undoChange: undoChange, rolloverBlock: rolloverBlock, findExercise: findExercise, suggest: suggest, nextWeightFor: nextWeightFor, fixLateralRaise: fixLateralRaise, swapBentOverRow: swapBentOverRow, evenDumbbells: evenDumbbells, swapAlt: swapAlt, addFlyAlt: addFlyAlt, isDumbbell: isDumbbell, chestRow: chestRow, sessionE1RM: sessionE1RM, trend: trend, csvEscape: csvEscape };
   if (typeof module !== 'undefined' && module.exports) module.exports = api; else root.GymLogic = api;

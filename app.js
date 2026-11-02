@@ -48,6 +48,7 @@
       s.changes.push({ id: L.newId('c'), date: Date.now(), exId: '', exName: 'Programme', kind: 'programme', source: 'coach', note: 'Week count reset to Week 1 – weights kept', before: {}, after: {}, undone: false, noUndo: true });
       s.migrations.weekReset1 = true;
     }
+    if (!s.migrations.machineLegs1) { L.machineLegs(s, true); s.migrations.machineLegs1 = true; }
     return s;
   }
   function load() { try { return normalise(JSON.parse(localStorage.getItem(KEY))); } catch (e) { return defaults(); } }
@@ -801,6 +802,7 @@
   function loadMine(confirmIt) {
     if (confirmIt && days().length && !confirm('Replace your current programme with “Alastair – Block 1 (Push/Pull)”? Your logged history is kept.')) return;
     var pr = { name: 'Alastair – Block 1 (Push/Pull)', days: L.pushPullDays(L.builtinAlastairBlock1().days) };
+    L.machineLegs({ program: pr }, false);
     pr.days.forEach(function (d) { d.exercises.forEach(function (e) { e.blockStart = e.weight; }); });
     state.program = { name: pr.name, days: pr.days }; state.nextDayIdx = 0; state.seeded = true;
     if (!state.sessions.length) { state.week = 1; state.phaseSince = Date.now(); }
@@ -818,7 +820,7 @@
 
   /* ============ init ============ */
   render();
-  if (!state.seeded && !days().length) loadMine(false);
+  if (!state.seeded && !days().length) loadMine(false); else save();
   if (state.active) { /* resume */ }
   if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(function () { });
   if ('serviceWorker' in navigator) window.addEventListener('load', function () { navigator.serviceWorker.register('sw.js').catch(function () { }); });
