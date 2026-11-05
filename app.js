@@ -49,11 +49,11 @@
       s.migrations.weekReset1 = true;
     }
     if (!s.migrations.machineLegs1) { L.machineLegs(s, true); s.migrations.machineLegs1 = true; }
-    if (!s.migrations.rowPerSide1) {
+    if (!s.migrations.rowRevert1) {
       ((s.program || {}).days || []).forEach(function (d) { (d.exercises || []).forEach(function (e) {
-        if (/plate-loaded chest-supported row/i.test(e.name || '')) e.notes = 'T-bar style, chest on pad. Weight per side (log one side only). Form first. Rest 2 min.';
+        if (/plate-loaded chest-supported row/i.test(e.name || '')) e.notes = 'T-bar style, chest on pad. Log total plates (35kg each side = 70). Form first. Rest 2 min.';
       }); });
-      s.migrations.rowPerSide1 = true;
+      s.migrations.rowRevert1 = true;
     }
     return s;
   }
