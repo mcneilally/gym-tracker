@@ -61,6 +61,19 @@
       }); });
       s.migrations.rowPerSide2 = true;
     }
+    if (!s.migrations.review1117) {
+      // weekly review 17 Nov: seated cable stack has no 92.5; lateral raise 12 and rear-delt 6 were auto-jumps that don't match what he lifted; row keeps its earned +2.5 (3x10 at 100)
+      var fixes = [[/^seated cable row$/i, 92.5, 90, null, null], [/^dumbbell lateral raise$/i, 12, 10, null, null], [/^rear delt fly$/i, 6, 8, 10, null], [/plate-loaded chest-supported row/i, 100, 102.5, 8, 100]];
+      ((s.program || {}).days || []).forEach(function (d) { (d.exercises || []).forEach(function (e) {
+        fixes.forEach(function (f) {
+          if (!f[0].test(e.name || '') || +e.weight !== f[1]) return;
+          var before = { weight: e.weight, reps: e.nextReps != null ? e.nextReps : e.repMin, sets: e.sets };
+          e.weight = f[2]; if (f[3] != null) e.nextReps = f[3]; if (f[4] != null) e.blockStart = f[4];
+          s.changes.push({ id: L.newId('c'), date: Date.now(), exId: e.id, exName: e.name, kind: 'corrected', source: 'coach', before: before, after: { weight: e.weight, reps: e.nextReps != null ? e.nextReps : e.repMin, sets: e.sets }, undone: false });
+        });
+      }); });
+      s.migrations.review1117 = true;
+    }
     return s;
   }
   function load() { try { return normalise(JSON.parse(localStorage.getItem(KEY))); } catch (e) { return defaults(); } }
