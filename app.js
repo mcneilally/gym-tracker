@@ -55,6 +55,12 @@
       }); });
       s.migrations.rowRevert1 = true;
     }
+    if (!s.migrations.rowPerSide2) {
+      ((s.program || {}).days || []).forEach(function (d) { (d.exercises || []).forEach(function (e) {
+        if (/plate-loaded chest-supported row/i.test(e.name || '')) { e.notes = 'T-bar style, chest on pad. Log weight per side (e.g. 50kg plates each side = 50). Form first. Rest 2 min.'; e.weight = 100; e.blockStart = 100; }
+      }); });
+      s.migrations.rowPerSide2 = true;
+    }
     return s;
   }
   function load() { try { return normalise(JSON.parse(localStorage.getItem(KEY))); } catch (e) { return defaults(); } }
