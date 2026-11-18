@@ -163,7 +163,30 @@
   function evenDown(w) { w = +w || 0; return Math.max(0, Math.floor(w / 2 + 1e-9) * 2); }
   function nextEven(w) { return evenDown(w) + 2; }
   function deloadEven(w) { w = +w || 0; if (!(w > 0)) return 0; var d = evenDown(w * 0.9); if (d >= w) d = Math.max(0, evenDown(w) - 2); return d; }
+  /* Selectorised cable stacks at his gym. 'single' = one-stack machines (seated row, pulldowns); 'dual' = dual adjustable pulley, values per handle. */
+  var STACKS = {
+    single: [5, 12.5, 20, 27.5, 35, 42.5, 50, 60, 70, 80, 90, 100, 110, 120, 130],
+    dual: [2.5, 5, 7.5, 10, 12.5, 15, 17.5, 21.25, 25, 28.75, 32.5, 36.25, 40, 43.75, 47.5]
+  };
+  var SINGLE_STACK_RE = /seated cable row|cable row|pull-?down|pull-?over|lat pull/i;
+  var DUAL_STACK_RE = /push-?down|face pull|cable|crossover/i;
+  /* which stack an exercise uses ('single' | 'dual'), or null for free weights / unknown */
+  function stackOf(ex) {
+    if (!ex) return null; var n = String(ex.name || '');
+    if (/dumbbell|\bdb\b|barbell|smith|plate-loaded/i.test(n)) return null;
+    if (/push-?down|face pull|crossover/i.test(n)) return 'dual';
+    if (SINGLE_STACK_RE.test(n)) return /dumbbell/i.test(n) ? null : 'single';
+    if (DUAL_STACK_RE.test(n)) return /^cable (crunch|woodchop|pull-?through|kickback)/i.test(n) ? null : 'dual';
+    return null;
+  }
+  function stackList(ex) { var k = stackOf(ex); return k ? STACKS[k] : null; }
+  function stackDown(w, list) { w = +w || 0; var r = 0; for (var i = 0; i < list.length; i++) if (list[i] <= w + 1e-9) r = list[i]; return r; }
+  function stackUp(w, list) { w = +w || 0; for (var i = 0; i < list.length; i++) if (list[i] > w + 1e-9) return list[i]; return w; }
+  /* ~10% lighter, but always at least one pin below */
+  function stackDeload(w, list) { w = +w || 0; if (!(w > 0)) return 0; var d = stackDown(w * 0.9, list); if (d >= w) { var below = list.filter(function (x) { return x < w - 1e-9; }); d = below.length ? below[below.length - 1] : 0; } return d; }
+  function deloadFor(w, ex) { var l = stackList(ex); if (l) return stackDeload(w, l); return isDumbbell(ex) ? deloadEven(w) : deloadPlain(w); }
   function nextWeightFor(w, ex) {
+    var sl = stackList(ex); if (sl) return stackUp(w, sl);
     if (isDumbbell(ex)) return nextEven(w);
     w = +w || 0; var db = DB_RE.test((ex && ex.name) || ''), lower = ex && ex.type === 'lower', step;
     if (w < 15) step = 1; else if (w <= 40) step = db ? 2 : 2.5; else step = lower ? 5 : 2.5;
@@ -193,7 +216,7 @@
       var streak = 0;
       for (var i = history.length - 1; i >= 0 && missed(history[i]); i--) streak++;
       if (streak >= 2) {
-        var dw = isDumbbell(ex) ? deloadEven(tw) : deloadPlain(tw);
+        var dw = deloadFor(tw, ex);
         return Object.assign(base, { kind: 'deload', nextWeight: dw, nextReps: ex.repMin,
           text: 'Drop to ' + fmt(dw) + 'kg (a 10% deload) and rebuild.',
           reason: 'You fell short of ' + ex.repMin + ' reps in ' + streak + ' sessions in a row at ' + fmt(tw) + 'kg. A short deload clears fatigue so you can climb back past it.' });
@@ -278,8 +301,7 @@
   /* Deload: ~10% lighter (rounded to 2.5kg; 1kg for tiny loads so it never rounds UP), one fewer set (min 2) */
   function deloadTarget(ex) {
     var w = +ex.weight || 0, sets = Math.max(1, parseInt(ex.sets, 10) || 3), dw = 0;
-    if (w > 0 && isDumbbell(ex)) dw = deloadEven(w);
-    else if (w > 0) dw = deloadPlain(w);
+    if (w > 0) dw = deloadFor(w, ex);
     return { weight: dw, sets: Math.max(Math.min(sets, 2), sets - 1) };
   }
   /* Back-off weight for sets 2+ of a top-set structure: pct% lighter, rounded to 2.5kg, always below the top set */
@@ -464,6 +486,22 @@
     return null;
   }
 
+  /* One-time migration: snap cable-stack targets down to a weight the stack really has, unless that would drop below what he last lifted (progress). */
+  function snapStacks(days, sessions, changes) {
+    var out = [], skipped = [];
+    function one(ex) {
+      var list = stackList(ex), w = +ex.weight || 0; if (!list || !(w > 0)) return;
+      if (list.some(function (x) { return Math.abs(x - w) < 1e-9; })) return;
+      var snapped = stackDown(w, list), hh = historyFor(sessions, ex.name, false), lifted = hh.length ? topWeight(hh[hh.length - 1].sets) : 0;
+      if (!(snapped > 0) || snapped < lifted - 1e-9) { skipped.push(ex.name); return; }
+      var before = targetOf(ex); ex.weight = snapped; if (ex.blockStart != null && ex.blockStart > snapped) ex.blockStart = snapped;
+      var c = { id: newId('c'), date: Date.now(), exId: ex.id, exName: ex.name, kind: 'corrected', source: 'coach', note: 'Snapped to cable stack weights', before: before, after: targetOf(ex), undone: false };
+      (changes || []).push(c); out.push(c);
+    }
+    (days || []).forEach(function (d) { (d.exercises || []).forEach(function (ex) { one(ex); if (ex.alt) one(ex.alt); }); });
+    out.skipped = skipped; return out;
+  }
+
   /* One-time migration: round dumbbell targets down to even kg */
   function evenDumbbells(days, changes) {
     var out = [];
@@ -646,6 +684,6 @@
     applySuggestion: applySuggestion, isApplied: isApplied, describeChange: describeChange, bestWorkingWeight: bestWorkingWeight, nextBlockWeight: nextBlockWeight,
     builtinAlastairBlock1: builtinAlastairBlock1, pushPullDays: pushPullDays, migratePushPull: migratePushPull, legsBack: legsBack, machineLegs: machineLegs, visibleExercises: visibleExercises,
     historyFor: historyFor, suggestFor: suggestFor, metaOf: metaOf, applyForExercise: applyForExercise, applySessionSuggestions: applySessionSuggestions,
-    changeIsCurrent: changeIsCurrent, undoChange: undoChange, rolloverBlock: rolloverBlock, findExercise: findExercise, suggest: suggest, nextWeightFor: nextWeightFor, fixLateralRaise: fixLateralRaise, swapBentOverRow: swapBentOverRow, evenDumbbells: evenDumbbells, swapAlt: swapAlt, addFlyAlt: addFlyAlt, isDumbbell: isDumbbell, chestRow: chestRow, sessionE1RM: sessionE1RM, trend: trend, csvEscape: csvEscape };
+    changeIsCurrent: changeIsCurrent, undoChange: undoChange, rolloverBlock: rolloverBlock, findExercise: findExercise, suggest: suggest, nextWeightFor: nextWeightFor, snapStacks: snapStacks, stackOf: stackOf, STACKS: STACKS, fixLateralRaise: fixLateralRaise, swapBentOverRow: swapBentOverRow, evenDumbbells: evenDumbbells, swapAlt: swapAlt, addFlyAlt: addFlyAlt, isDumbbell: isDumbbell, chestRow: chestRow, sessionE1RM: sessionE1RM, trend: trend, csvEscape: csvEscape };
   if (typeof module !== 'undefined' && module.exports) module.exports = api; else root.GymLogic = api;
 })(typeof self !== 'undefined' ? self : this);

@@ -74,6 +74,7 @@
       }); });
       s.migrations.review1117 = true;
     }
+    if (!s.migrations.stacks1118) { L.snapStacks((s.program || {}).days, s.sessions, s.changes); s.migrations.stacks1118 = true; }
     return s;
   }
   function load() { try { return normalise(JSON.parse(localStorage.getItem(KEY))); } catch (e) { return defaults(); } }
